@@ -1,4 +1,4 @@
-import { MINode } from "./mi_parse";
+import { XSDBLine } from "./xsdbp_parse";
 
 const resultRegex = /^([a-zA-Z_\-][a-zA-Z0-9_\-]*|\[\d+\])\s*=\s*/;
 const variableRegex = /^[a-zA-Z_\-][a-zA-Z0-9_\-]*/;
@@ -215,7 +215,7 @@ export function expandValue(variableCreate: Function, value: string, root: strin
 			ref = variableCreate(val);
 			val = "Object";
 		} else if (typeof val == "string" && val.startsWith("*0x")) {
-			if (extra && MINode.valueOf(extra, "arg") == "1") {
+			if (extra && XSDBLine.valueOf(extra, "arg") == "1") {
 				ref = variableCreate(getNamespace("*(" + name), { arg: true });
 				val = "<args>";
 			} else {

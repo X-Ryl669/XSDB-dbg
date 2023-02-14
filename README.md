@@ -5,11 +5,11 @@
 [![GitHub CI Status](https://img.shields.io/github/workflow/status/WebFreak001/code-debug/Unit%20Test%20Project?label=CI&logo=GitHub)](https://github.com/WebFreak001/code-debug/actions/workflows/unit_test.yml)
 [![Coverage Status](https://img.shields.io/codecov/c/github/WebFreak001/code-debug)](https://codecov.io/github/WebFreak001/code-debug)
 
-Native VSCode debugger. Supports both GDB and LLDB.
+Native VSCode debugger. Supports Xilinx's XSDB.
 
 ## Installation
 
-Press ctrl-p (cmd+p on OS X) and run `ext install webfreak.debug` in visual studio code and install GDB/LLDB. See `Usage` for details on how to set it up.
+Press ctrl-p (cmd+p on OS X) and run `ext install webfreak.debug` in visual studio code and install Xilinx's XSDB (via Vitis). See `Usage` for details on how to set it up.
 
 ![Preview](images/preview.png)
 

@@ -1,17 +1,15 @@
 {
 	"name": "debug",
-	"displayName": "Native Debug",
-	"description": "GDB, LLDB & Mago-MI Debugger support for VSCode",
+	"displayName": "XSDB Debug",
+	"description": "XSDB Debugger support for VSCode",
 	"keywords": [
-		"gdb",
-		"lldb",
-		"mago-mi",
-		"native",
+		"xsdb",
+		"remote",
 		"debug"
 	],
 	"license": "public domain",
 	"version": "0.26.1",
-	"publisher": "webfreak",
+	"publisher": "X-Ryl669",
 	"icon": "images/icon.png",
 	"engines": {
 		"vscode": "^1.55.0"
@@ -27,7 +25,7 @@
 	],
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/WebFreak001/code-debug.git"
+		"url": "https://github.com/X-Ryl669/XSDB-dbg.git"
 	},
 	"capabilities": {
 		"untrustedWorkspaces": {
@@ -47,89 +45,17 @@
 			},
 			{
 				"language": "cpp"
-			},
-			{
-				"language": "d"
-			},
-			{
-				"language": "objective-c"
-			},
-			{
-				"language": "fortran"
-			},
-			{
-				"language": "fortran-modern"
-			},
-			{
-				"language": "fortran90"
-			},
-			{
-				"language": "fortran_free-form"
-			},
-			{
-				"language": "fortran_fixed-form"
-			},
-			{
-				"language": "rust"
-			},
-			{
-				"language": "pascal"
-			},
-			{
-				"language": "objectpascal"
-			},
-			{
-				"language": "ada"
-			},
-			{
-				"language": "nim"
-			},
-			{
-				"language": "arm"
-			},
-			{
-				"language": "asm"
-			},
-			{
-				"language": "vala"
-			},
-			{
-				"language": "crystal"
-			},
-			{
-				"language": "kotlin"
-			},
-			{
-				"language": "zig"
 			}
 		],
 		"debuggers": [
 			{
-				"type": "gdb",
-				"program": "./out/src/gdb.js",
+				"type": "xsdb",
+				"program": "./out/src/xsdb.js",
 				"runtime": "node",
-				"label": "GDB",
+				"label": "XSDB",
 				"languages": [
 					"c",
-					"cpp",
-					"d",
-					"objective-c",
-					"fortran",
-					"fortran-modern",
-					"fortran90",
-					"fortran_free-form",
-					"fortran_fixed-form",
-					"rust",
-					"pascal",
-					"objectpascal",
-					"ada",
-					"nim",
-					"arm",
-					"asm",
-					"vala",
-					"crystal",
-					"kotlin",
-					"zig"
+					"cpp"
 				],
 				"variables": {
 					"FileBasenameNoExt": "code-debug.getFileBasenameNoExt",
@@ -144,7 +70,7 @@
 						"properties": {
 							"target": {
 								"type": "string",
-								"description": "Path of executable"
+								"description": "Path to work dir"
 							},
 							"arguments": {
 								"type": "string",
@@ -158,24 +84,29 @@
 								"type": "string",
 								"description": "project path"
 							},
-							"gdbpath": {
+							"xsdbpath": {
 								"type": "string",
-								"description": "Path to the gdb executable or the command if in PATH",
-								"default": "gdb"
+								"description": "Path to the xsdb executable or the command if in PATH",
+								"default": "xsdb"
+							},
+							"xsdb_target_filter": {
+								"type": "string",
+								"description": "Filter to use when listing targets (for example: {name =~\"core*\"})",
+								"default": ""
 							},
 							"env": {
 								"type": "object",
-								"description": "Environment overriding the gdb (and in turn also the process) environment",
+								"description": "Environment overriding the xsdb (and in turn also the process) environment",
 								"default": null
 							},
 							"debugger_args": {
 								"type": "array",
-								"description": "Additional arguments to pass to GDB",
+								"description": "Additional arguments to pass to XSDB",
 								"default": []
 							},
 							"pathSubstitutions": {
 								"type": "object",
-								"description": "Help GDB find your source using path substitutions (GDB `substitute-path)` variable",
+								"description": "Help XSDB find your source using path substitutions (XSDB `substitute-path)` variable",
 								"default": {
 									"<fromPath>": "<toPath>"
 								}
@@ -192,637 +123,18 @@
 							},
 							"printCalls": {
 								"type": "boolean",
-								"description": "Prints all GDB calls to the console",
+								"description": "Prints all XSDB calls to the console",
 								"default": false
 							},
 							"showDevDebugOutput": {
 								"type": "boolean",
-								"description": "Prints all GDB responses to the console",
+								"description": "Prints all XSDB responses to the console",
 								"default": false
 							},
 							"autorun": {
 								"type": "array",
-								"description": "GDB commands to run when starting to debug",
+								"description": "XSDB commands to run when starting to debug",
 								"default": []
-							},
-							"stopAtEntry": {
-								"type": [
-									"boolean",
-									"string"
-								],
-								"description": "Whether debugger should stop at application entry point",
-								"default": false
-							},
-							"ssh": {
-								"required": [
-									"host",
-									"user",
-									"cwd"
-								],
-								"type": "object",
-								"description": "If this is set then the extension will connect to an ssh host and run GDB there",
-								"properties": {
-									"host": {
-										"type": "string",
-										"description": "Remote host name/ip to connect to"
-									},
-									"port": {
-										"type": [
-											"number",
-											"string"
-										],
-										"description": "Remote port number",
-										"default": 22
-									},
-									"user": {
-										"type": "string",
-										"description": "Username to connect as"
-									},
-									"password": {
-										"type": "string",
-										"description": "Plain text password (unsafe; if possible use keyfile instead)"
-									},
-									"keyfile": {
-										"type": "string",
-										"description": "Absolute path to private key"
-									},
-									"useAgent": {
-										"type": "boolean",
-										"description": "Auto-detect the running SSH agent (via SSH_AUTH_SOCK environment variable) and use it to perform authentication",
-										"default": false
-									},
-									"sourceFileMap": {
-										"type": "object",
-										"description": "Mapping of source paths (from GDB on ssh remote) to local (IDE) paths.",
-										"default": {
-											"<sourcePath>": "<localPath>"
-										}
-									},
-									"cwd": {
-										"type": "string",
-										"description": "Working directory for the debugger.\nIf `ssh.sourceFileMap` is not set, then this is also the project path on the remote for mapping with `cwd`."
-									},
-									"forwardX11": {
-										"type": "boolean",
-										"description": "If true, the server will redirect x11 to the local host",
-										"default": true
-									},
-									"x11port": {
-										"type": [
-											"number",
-											"string"
-										],
-										"description": "Port to redirect X11 data to (by default port = display + 6000)",
-										"default": 6000
-									},
-									"x11host": {
-										"type": "string",
-										"description": "Hostname/ip to redirect X11 data to",
-										"default": "localhost"
-									},
-									"remotex11screen": {
-										"type": "number",
-										"description": "Screen to start the application on the remote side",
-										"default": 0
-									},
-									"bootstrap": {
-										"type": "string",
-										"description": "Content will be executed on the SSH host before the debugger call."
-									}
-								}
-							}
-						}
-					},
-					"attach": {
-						"required": [
-							"target",
-							"cwd"
-						],
-						"properties": {
-							"target": {
-								"type": "string",
-								"description": "PID of running program or program name or connection arguments (eg :2345) if remote is true"
-							},
-							"remote": {
-								"type": "boolean",
-								"description": "If true this will connect to a gdbserver instead of attaching to a PID",
-								"default": false
-							},
-							"valuesFormatting": {
-								"type": "string",
-								"description": "Set the way of showing variable values. 'disabled' - show value as is, 'parseText' - parse debuggers output text into structure, 'prettyPrinters' - enable debuggers custom pretty-printers if there are any",
-								"default": "parseText",
-								"enum": [
-									"disabled",
-									"parseText",
-									"prettyPrinters"
-								]
-							},
-							"printCalls": {
-								"type": "boolean",
-								"description": "Prints all GDB calls to the console",
-								"default": false
-							},
-							"showDevDebugOutput": {
-								"type": "boolean",
-								"description": "Prints all GDB responses to the console",
-								"default": false
-							},
-							"executable": {
-								"type": "string",
-								"description": "Path of executable for debugging symbols"
-							},
-							"gdbpath": {
-								"type": "string",
-								"description": "Path to the gdb executable or the command if in PATH",
-								"default": "gdb"
-							},
-							"env": {
-								"type": "object",
-								"description": "Environment overriding the gdb (and in turn also the process) environment",
-								"default": null
-							},
-							"debugger_args": {
-								"type": "array",
-								"description": "Additional arguments to pass to GDB",
-								"default": []
-							},
-							"pathSubstitutions": {
-								"type": "object",
-								"description": "Help GDB find your source using path substitutions (GDB `substitute-path)` variable",
-								"default": {
-									"<fromPath>": "<toPath>"
-								}
-							},
-							"cwd": {
-								"type": "string",
-								"description": "project path",
-								"default": "${workspaceRoot}"
-							},
-							"autorun": {
-								"type": "array",
-								"description": "GDB commands to run when starting to debug",
-								"default": []
-							},
-							"stopAtConnect": {
-								"type": "boolean",
-								"description": "Whether debugger should stop after connecting to target",
-								"default": false
-							},
-							"stopAtEntry": {
-								"type": [
-									"boolean",
-									"string"
-								],
-								"description": "Whether debugger should stop at application entry point",
-								"default": false
-							},
-							"ssh": {
-								"required": [
-									"host",
-									"cwd",
-									"user"
-								],
-								"type": "object",
-								"description": "If this is set then the extension will connect to an ssh host and run GDB there",
-								"properties": {
-									"host": {
-										"type": "string",
-										"description": "Remote host name/ip to connect to"
-									},
-									"port": {
-										"type": [
-											"number",
-											"string"
-										],
-										"description": "Remote port number",
-										"default": 22
-									},
-									"user": {
-										"type": "string",
-										"description": "Username to connect as"
-									},
-									"password": {
-										"type": "string",
-										"description": "Plain text password (unsafe; if possible use keyfile instead)"
-									},
-									"keyfile": {
-										"type": "string",
-										"description": "Absolute path to private key"
-									},
-									"useAgent": {
-										"type": "boolean",
-										"description": "Auto-detect the running SSH agent (via SSH_AUTH_SOCK environment variable) and use it to perform authentication",
-										"default": false
-									},
-									"sourceFileMap": {
-										"type": "object",
-										"description": "Mapping of source paths (from GDB on ssh remote) to local (IDE) paths.",
-										"default": {
-											"<sourcePath>": "<localPath>"
-										}
-									},
-									"cwd": {
-										"type": "string",
-										"description": "Working directory for the debugger.\nIf `ssh.sourceFileMap` is not set, then this is also the project path on the remote for mapping with `cwd`."
-									},
-									"forwardX11": {
-										"type": "boolean",
-										"description": "If true, the server will redirect x11 to the local host",
-										"default": true
-									},
-									"x11port": {
-										"type": [
-											"number",
-											"string"
-										],
-										"description": "Port to redirect X11 data to (by default port = display + 6000)",
-										"default": 6000
-									},
-									"x11host": {
-										"type": "string",
-										"description": "Hostname/ip to redirect X11 data to",
-										"default": "localhost"
-									},
-									"remotex11screen": {
-										"type": "number",
-										"description": "Screen to start the application on the remote side",
-										"default": 0
-									},
-									"bootstrap": {
-										"type": "string",
-										"description": "Content will be executed on the SSH host before the debugger call."
-									}
-								}
-							}
-						}
-					}
-				},
-				"initialConfigurations": [
-					{
-						"name": "Debug",
-						"type": "gdb",
-						"request": "launch",
-						"target": "./bin/executable",
-						"cwd": "${workspaceRoot}",
-						"valuesFormatting": "parseText"
-					}
-				],
-				"configurationSnippets": [
-					{
-						"label": "GDB: Launch Program",
-						"description": "Starts the program using gdb",
-						"body": {
-							"type": "gdb",
-							"request": "launch",
-							"name": "${2:Launch Program}",
-							"target": "${1:./bin/executable}",
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"valuesFormatting": "parseText"
-						}
-					},
-					{
-						"label": "GDB: Attach to PID",
-						"description": "Attaches to a running program pid using gdb",
-						"body": {
-							"type": "gdb",
-							"request": "attach",
-							"name": "${2:Attach to PID}",
-							"target": "${1:[PID]}",
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"valuesFormatting": "parseText"
-						}
-					},
-					{
-						"label": "GDB: Connect to gdbserver",
-						"description": "Connects to a gdbserver for debugging",
-						"body": {
-							"type": "gdb",
-							"request": "attach",
-							"name": "${3:Attach to gdbserver}",
-							"executable": "${1:./bin/executable}",
-							"target": ":${2:2345}",
-							"remote": true,
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"valuesFormatting": "parseText"
-						}
-					},
-					{
-						"label": "GDB: Launch over SSH",
-						"description": "Remotely starts the program using gdb",
-						"body": {
-							"type": "gdb",
-							"request": "launch",
-							"name": "${6:Launch Program (SSH)}",
-							"target": "${1:./bin/executable}",
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"ssh": {
-								"host": "${2:127.0.0.1}",
-								"cwd": "${3:/tmp/working}",
-								"keyfile": "${4:/home/my_user/.ssh/id_rsa}",
-								"user": "${5:remote_user}",
-								"sourceFileMap": {
-									"${6:/home/remote_user/project/}": "^\"\\${workspaceRoot}\""
-								}
-							},
-							"valuesFormatting": "parseText"
-						}
-					},
-					{
-						"label": "GDB: Launch GUI over SSH with X11 forwarding",
-						"description": "Remotely starts the program using gdb with X11 forwarding",
-						"body": {
-							"type": "gdb",
-							"request": "launch",
-							"name": "${6:Launch Program (SSH + X11)}",
-							"target": "${1:./bin/executable}",
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"ssh": {
-								"host": "${2:127.0.0.1}",
-								"cwd": "${3:/home/remote_user/project/}",
-								"keyfile": "${4:/home/my_user/.ssh/id_rsa}",
-								"user": "${5:remote_user}",
-								"forwardX11": true,
-								"x11host": "localhost",
-								"x11port": 6000
-							},
-							"valuesFormatting": "parseText"
-						}
-					},
-					{
-						"label": "GDB: Debug external embedded device",
-						"description": "Debugs an embedded microcontroller supported by GDB by attaching over extended-remote",
-						"body": {
-							"type": "gdb",
-							"request": "attach",
-							"name": "${6:Debug Microcontroller}",
-							"target": "extended-remote ${2:/dev/cu.usbmodem00000000}",
-							"executable": "${1:./bin/executable.elf}",
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"autorun": [
-								"monitor tpwr enable",
-								"monitor swdp_scan",
-								"attach 1",
-								"load ${1:./bin/executable.elf}"
-							]
-						},
-						"valuesFormatting": "parseText"
-					}
-				]
-			},
-			{
-				"type": "lldb-mi",
-				"program": "./out/src/lldb.js",
-				"runtime": "node",
-				"label": "LLDB",
-				"languages": [
-					"c",
-					"cpp",
-					"d",
-					"objective-c",
-					"fortran",
-					"fortran-modern",
-					"fortran90",
-					"fortran_free-form",
-					"fortran_fixed-form",
-					"rust",
-					"pascal",
-					"objectpascal",
-					"ada",
-					"nim",
-					"arm",
-					"asm",
-					"vala",
-					"crystal",
-					"kotlin",
-					"zig"
-				],
-				"variables": {
-					"FileBasenameNoExt": "code-debug.getFileBasenameNoExt",
-					"FileNameNoExt": "code-debug.getFileNameNoExt"
-				},
-				"configurationAttributes": {
-					"launch": {
-						"required": [
-							"target"
-						],
-						"properties": {
-							"target": {
-								"type": "string",
-								"description": "Path of executable"
-							},
-							"arguments": {
-								"type": "string",
-								"description": "Arguments to append after the executable"
-							},
-							"cwd": {
-								"type": "string",
-								"description": "project path"
-							},
-							"lldbmipath": {
-								"type": "string",
-								"description": "Path to the lldb-mi executable or the command if in PATH",
-								"default": "lldb-mi"
-							},
-							"env": {
-								"type": "object",
-								"description": "Environment overriding the lldb-mi (and in turn also the process) environment",
-								"default": null
-							},
-							"debugger_args": {
-								"type": "array",
-								"description": "Additional arguments to pass to LLDB",
-								"default": []
-							},
-							"pathSubstitutions": {
-								"type": "object",
-								"description": "Help LLDB find your source using path substitutions (LLDB `target.source-map)` variable",
-								"default": {
-									"<fromPath>": "<toPath>"
-								}
-							},
-							"valuesFormatting": {
-								"type": "string",
-								"description": "Set the way of showing variable values. 'disabled' - show value as is, 'parseText' - parse debuggers output text into structure, 'prettyPrinters' - enable debuggers custom pretty-printers if there are any",
-								"default": "parseText",
-								"enum": [
-									"disabled",
-									"parseText",
-									"prettyPrinters"
-								]
-							},
-							"printCalls": {
-								"type": "boolean",
-								"description": "Prints all lldb calls to the console",
-								"default": false
-							},
-							"showDevDebugOutput": {
-								"type": "boolean",
-								"description": "Prints all lldb responses to the console",
-								"default": false
-							},
-							"autorun": {
-								"type": "array",
-								"description": "lldb commands to run when starting to debug",
-								"default": []
-							},
-							"stopAtEntry": {
-								"type": [
-									"boolean",
-									"string"
-								],
-								"description": "Whether debugger should stop at application entry point",
-								"default": false
-							},
-							"ssh": {
-								"required": [
-									"host",
-									"cwd",
-									"user"
-								],
-								"type": "object",
-								"description": "If this is set then the extension will connect to an ssh host and run lldb there",
-								"properties": {
-									"host": {
-										"type": "string",
-										"description": "Remote host name/ip to connect to"
-									},
-									"port": {
-										"type": [
-											"number",
-											"string"
-										],
-										"description": "Remote port number",
-										"default": 22
-									},
-									"user": {
-										"type": "string",
-										"description": "Username to connect as"
-									},
-									"password": {
-										"type": "string",
-										"description": "Plain text password (unsafe; if possible use keyfile instead)"
-									},
-									"keyfile": {
-										"type": "string",
-										"description": "Absolute path to private key"
-									},
-									"useAgent": {
-										"type": "boolean",
-										"description": "Auto-detect the running SSH agent (via SSH_AUTH_SOCK environment variable) and use it to perform authentication",
-										"default": false
-									},
-									"sourceFileMap": {
-										"type": "object",
-										"description": "Mapping of source paths (from GDB on ssh remote) to local (IDE) paths.",
-										"default": {
-											"<sourcePath>": "<localPath>"
-										}
-									},
-									"cwd": {
-										"type": "string",
-										"description": "Working directory for the debugger.\nIf `ssh.sourceFileMap` is not set, then this is also the project path on the remote for mapping with `cwd`."
-									},
-									"forwardX11": {
-										"type": "boolean",
-										"description": "If true, the server will redirect x11 to the local host",
-										"default": true
-									},
-									"x11host": {
-										"type": "string",
-										"description": "Hostname/ip to redirect X11 data to",
-										"default": "localhost"
-									},
-									"x11port": {
-										"type": [
-											"number",
-											"string"
-										],
-										"description": "Port to redirect X11 data to (by default port = display + 6000)",
-										"default": 6000
-									},
-									"remotex11screen": {
-										"type": "number",
-										"description": "Screen to start the application on the remote side",
-										"default": 0
-									},
-									"bootstrap": {
-										"type": "string",
-										"description": "Content will be executed on the SSH host before the debugger call."
-									}
-								}
-							}
-						}
-					},
-					"attach": {
-						"required": [
-							"target"
-						],
-						"properties": {
-							"target": {
-								"type": "string",
-								"description": "PID of running program or program name"
-							},
-							"valuesFormatting": {
-								"type": "string",
-								"description": "Set the way of showing variable values. 'disabled' - show value as is, 'parseText' - parse debuggers output text into structure, 'prettyPrinters' - enable debuggers custom pretty-printers if there are any",
-								"default": "parseText",
-								"enum": [
-									"disabled",
-									"parseText",
-									"prettyPrinters"
-								]
-							},
-							"printCalls": {
-								"type": "boolean",
-								"description": "Prints all LLDB calls to the console",
-								"default": false
-							},
-							"showDevDebugOutput": {
-								"type": "boolean",
-								"description": "Prints all LLDB responses to the console",
-								"default": false
-							},
-							"executable": {
-								"type": "string",
-								"description": "Path of executable for debugging symbols"
-							},
-							"lldbmipath": {
-								"type": "string",
-								"description": "Path to the lldb-mi executable or the command if in PATH",
-								"default": "lldb-mi"
-							},
-							"env": {
-								"type": "object",
-								"description": "Environment overriding the lldb-mi (and in turn also the process) environment",
-								"default": null
-							},
-							"debugger_args": {
-								"type": "array",
-								"description": "Additional arguments to pass to LLDB",
-								"default": []
-							},
-							"pathSubstitutions": {
-								"type": "object",
-								"description": "Help LLDB find your source using path substitutions (LLDB `target.source-map)` variable",
-								"default": {
-									"<fromPath>": "<toPath>"
-								}
-							},
-							"cwd": {
-								"type": "string",
-								"description": "project path",
-								"default": "${workspaceRoot}"
-							},
-							"autorun": {
-								"type": "array",
-								"description": "lldb commands to run when starting to debug",
-								"default": []
-							},
-							"stopAtConnect": {
-								"type": "boolean",
-								"description": "Whether debugger should stop after connecting to target",
-								"default": false
 							},
 							"stopAtEntry": {
 								"type": [
@@ -838,245 +150,22 @@
 				"initialConfigurations": [
 					{
 						"name": "Debug",
-						"type": "lldb-mi",
+						"type": "xsdb",
 						"request": "launch",
-						"target": "./bin/executable",
+						"target": "ip/aie/Work",
 						"cwd": "${workspaceRoot}",
 						"valuesFormatting": "parseText"
 					}
 				],
 				"configurationSnippets": [
 					{
-						"label": "LLDB: Launch Program",
-						"description": "Starts the program using lldb-mi",
+						"label": "XSDB: Launch Program",
+						"description": "Starts the program using xsdb",
 						"body": {
-							"type": "lldb-mi",
+							"type": "xsdb",
 							"request": "launch",
 							"name": "${2:Launch Program}",
-							"target": "${1:./bin/executable}",
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"valuesFormatting": "parseText"
-						}
-					},
-					{
-						"label": "LLDB: Attach to PID",
-						"description": "Attaches to a running program pid using lldb-mi",
-						"body": {
-							"type": "lldb-mi",
-							"request": "attach",
-							"name": "${2:Attach to PID}",
-							"target": "${1:[PID]}",
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"valuesFormatting": "parseText"
-						}
-					},
-					{
-						"label": "LLDB: Launch over SSH",
-						"description": "Remotely starts the program using lldb-mi",
-						"body": {
-							"type": "lldb-mi",
-							"request": "launch",
-							"name": "${6:Launch Program (SSH)}",
-							"target": "${1:./bin/executable}",
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"ssh": {
-								"host": "${2:127.0.0.1}",
-								"cwd": "${3:/home/remote_user/project/}",
-								"keyfile": "${4:/home/my_user/.ssh/id_rsa}",
-								"user": "${5:remote_user}"
-							},
-							"valuesFormatting": "parseText"
-						}
-					},
-					{
-						"label": "LLDB: Launch GUI over SSH with X11 forwarding",
-						"description": "Remotely starts the program using lldb-mi with X11 forwarding",
-						"body": {
-							"type": "lldb-mi",
-							"request": "launch",
-							"name": "${6:Launch Program (SSH + X11)}",
-							"target": "${1:./bin/executable}",
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"ssh": {
-								"host": "${2:127.0.0.1}",
-								"cwd": "${3:/home/remote_user/project/}",
-								"keyfile": "${4:/home/my_user/.ssh/id_rsa}",
-								"user": "${5:remote_user}",
-								"forwardX11": true,
-								"x11host": "localhost",
-								"x11port": 6000
-							},
-							"valuesFormatting": "parseText"
-						}
-					}
-				]
-			},
-			{
-				"type": "mago-mi",
-				"program": "./out/src/mago.js",
-				"runtime": "node",
-				"label": "Mago-MI",
-				"variables": {
-					"FileBasenameNoExt": "code-debug.getFileBasenameNoExt",
-					"FileNameNoExt": "code-debug.getFileNameNoExt"
-				},
-				"configurationAttributes": {
-					"launch": {
-						"required": [
-							"target"
-						],
-						"properties": {
-							"target": {
-								"type": "string",
-								"description": "Path of executable"
-							},
-							"arguments": {
-								"type": "string",
-								"description": "Arguments to append after the executable"
-							},
-							"cwd": {
-								"type": "string",
-								"description": "project path"
-							},
-							"magomipath": {
-								"type": "string",
-								"description": "Path to the mago-mi executable or the command if in PATH",
-								"default": "mago-mi"
-							},
-							"env": {
-								"type": "object",
-								"description": "Environment overriding the mago-mi (and in turn also the process) environment",
-								"default": null
-							},
-							"debugger_args": {
-								"type": "array",
-								"description": "Additional arguments to pass to mago",
-								"default": []
-							},
-							"valuesFormatting": {
-								"type": "string",
-								"description": "Set the way of showing variable values. 'disabled' - show value as is, 'parseText' - parse debuggers output text into structure, 'prettyPrinters' - enable debuggers custom pretty-printers if there are any",
-								"default": "parseText",
-								"enum": [
-									"disabled",
-									"parseText",
-									"prettyPrinters"
-								]
-							},
-							"printCalls": {
-								"type": "boolean",
-								"description": "Prints all mago calls to the console",
-								"default": false
-							},
-							"showDevDebugOutput": {
-								"type": "boolean",
-								"description": "Prints all mago responses to the console",
-								"default": false
-							},
-							"autorun": {
-								"type": "array",
-								"description": "mago commands to run when starting to debug",
-								"default": []
-							}
-						}
-					},
-					"attach": {
-						"required": [
-							"target"
-						],
-						"properties": {
-							"target": {
-								"type": "string",
-								"description": "PID of running program or program name"
-							},
-							"valuesFormatting": {
-								"type": "string",
-								"description": "Set the way of showing variable values. 'disabled' - show value as is, 'parseText' - parse debuggers output text into structure, 'prettyPrinters' - enable debuggers custom pretty-printers if there are any",
-								"default": "parseText",
-								"enum": [
-									"disabled",
-									"parseText",
-									"prettyPrinters"
-								]
-							},
-							"printCalls": {
-								"type": "boolean",
-								"description": "Prints all mago calls to the console",
-								"default": false
-							},
-							"showDevDebugOutput": {
-								"type": "boolean",
-								"description": "Prints all mago responses to the console",
-								"default": false
-							},
-							"executable": {
-								"type": "string",
-								"description": "Path of executable for debugging symbols"
-							},
-							"magomipath": {
-								"type": "string",
-								"description": "Path to the mago-mi executable or the command if in PATH",
-								"default": "mago-mi"
-							},
-							"env": {
-								"type": "object",
-								"description": "Environment overriding the mago-mi (and in turn also the process) environment",
-								"default": null
-							},
-							"debugger_args": {
-								"type": "array",
-								"description": "Additional arguments to pass to mago",
-								"default": []
-							},
-							"cwd": {
-								"type": "string",
-								"description": "project path",
-								"default": "${workspaceRoot}"
-							},
-							"autorun": {
-								"type": "array",
-								"description": "mago commands to run when starting to debug",
-								"default": []
-							},
-							"stopAtConnect": {
-								"type": "boolean",
-								"description": "Whether debugger should stop after connecting to target",
-								"default": false
-							}
-						}
-					}
-				},
-				"initialConfigurations": [
-					{
-						"name": "Debug",
-						"type": "mago-mi",
-						"request": "launch",
-						"target": "./bin/executable",
-						"cwd": "${workspaceRoot}",
-						"valuesFormatting": "parseText"
-					}
-				],
-				"configurationSnippets": [
-					{
-						"label": "Mago: Launch Program",
-						"description": "Starts the program using mago-mi",
-						"body": {
-							"type": "mago-mi",
-							"request": "launch",
-							"name": "${2:Launch Program}",
-							"target": "${1:./bin/executable}",
-							"cwd": "^\"\\${workspaceRoot}\"",
-							"valuesFormatting": "parseText"
-						}
-					},
-					{
-						"label": "Mago: Attach to PID",
-						"description": "Attaches to a running program pid using mago-mi",
-						"body": {
-							"type": "mago-mi",
-							"request": "attach",
-							"name": "${2:Attach to PID}",
-							"target": "${1:[PID]}",
+							"target": "${1:ip/aie/Work}",
 							"cwd": "^\"\\${workspaceRoot}\"",
 							"valuesFormatting": "parseText"
 						}
@@ -1124,7 +213,7 @@
 	},
 	"__metadata": {
 		"id": "2fd22b8e-b3b8-4e7f-9a28-a5e2d1bdd0d4",
-		"publisherDisplayName": "WebFreak",
+		"publisherDisplayName": "X-Ryl669",
 		"publisherId": "e054f80a-50f9-4d80-85c8-6ff87eef6c35"
 	}
 }

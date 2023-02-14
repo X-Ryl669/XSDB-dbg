@@ -1,4 +1,4 @@
-import { MINode } from "./mi_parse";
+import { XSDBLine } from "./xsdbp_parse";
 import { DebugProtocol } from "vscode-debugprotocol/lib/debugProtocol";
 
 export type ValuesFormattingMode = "disabled" | "parseText" | "prettyPrinters";
@@ -33,26 +33,8 @@ export interface Variable {
 	raw?: any;
 }
 
-export interface SSHArguments {
-	forwardX11: boolean;
-	host: string;
-	keyfile: string;
-	password: string;
-	useAgent: boolean;
-	cwd: string;
-	port: number;
-	user: string;
-	remotex11screen: number;
-	x11port: number;
-	x11host: string;
-	bootstrap: string;
-	sourceFileMap: { [index: string]: string };
-}
-
 export interface IBackend {
 	load(cwd: string, target: string, procArgs: string, separateConsole: string, autorun: string[]): Thenable<any>;
-	ssh(args: SSHArguments, cwd: string, target: string, procArgs: string, separateConsole: string, attach: boolean, autorun: string[]): Thenable<any>;
-	attach(cwd: string, executable: string, target: string, autorun: string[]): Thenable<any>;
 	connect(cwd: string, executable: string, target: string, autorun: string[]): Thenable<any>;
 	start(runToStart: boolean): Thenable<boolean>;
 	stop();
@@ -88,27 +70,27 @@ export class VariableObject {
 	hasMore: boolean;
 	id: number;
 	constructor(node: any) {
-		this.name = MINode.valueOf(node, "name");
-		this.exp = MINode.valueOf(node, "exp");
-		this.numchild = parseInt(MINode.valueOf(node, "numchild"));
-		this.type = MINode.valueOf(node, "type");
-		this.value = MINode.valueOf(node, "value");
-		this.threadId = MINode.valueOf(node, "thread-id");
-		this.frozen = !!MINode.valueOf(node, "frozen");
-		this.dynamic = !!MINode.valueOf(node, "dynamic");
-		this.displayhint = MINode.valueOf(node, "displayhint");
+		this.name = XSDBLine.valueOf(node, "name");
+		this.exp = XSDBLine.valueOf(node, "exp");
+		this.numchild = parseInt(XSDBLine.valueOf(node, "numchild"));
+		this.type = XSDBLine.valueOf(node, "type");
+		this.value = XSDBLine.valueOf(node, "value");
+		this.threadId = XSDBLine.valueOf(node, "thread-id");
+		this.frozen = !!XSDBLine.valueOf(node, "frozen");
+		this.dynamic = !!XSDBLine.valueOf(node, "dynamic");
+		this.displayhint = XSDBLine.valueOf(node, "displayhint");
 		// TODO: use has_more when it's > 0
-		this.hasMore = !!MINode.valueOf(node, "has_more");
+		this.hasMore = !!XSDBLine.valueOf(node, "has_more");
 	}
 
-	public applyChanges(node: MINode) {
-		this.value = MINode.valueOf(node, "value");
-		if (MINode.valueOf(node, "type_changed")) {
-			this.type = MINode.valueOf(node, "new_type");
+	public applyChanges(node: XSDBLine) {
+		this.value = XSDBLine.valueOf(node, "value");
+		if (XSDBLine.valueOf(node, "type_changed")) {
+			this.type = XSDBLine.valueOf(node, "new_type");
 		}
-		this.dynamic = !!MINode.valueOf(node, "dynamic");
-		this.displayhint = MINode.valueOf(node, "displayhint");
-		this.hasMore = !!MINode.valueOf(node, "has_more");
+		this.dynamic = !!XSDBLine.valueOf(node, "dynamic");
+		this.displayhint = XSDBLine.valueOf(node, "displayhint");
+		this.hasMore = !!XSDBLine.valueOf(node, "has_more");
 	}
 
 	public isCompound(): boolean {

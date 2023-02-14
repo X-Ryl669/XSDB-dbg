@@ -1,7 +1,7 @@
 import { Breakpoint, IBackend, Thread, Stack, Variable, VariableObject, MIError } from "../backend";
 import * as ChildProcess from "child_process";
 import { EventEmitter } from "events";
-import { parseXSDBP, XSDBLine, XSDBMode } from '../xsdbp_parse';
+import { parseXSDBP, XSDBLine, XSDBMode, XSDBAnswer } from '../xsdbp_parse';
 import * as linuxTerm from '../linux/console';
 import * as net from "net";
 import * as fs from "fs";
@@ -23,6 +23,8 @@ function couldBeOutput(line: string) {
 }
 
 const trace = false;
+
+
 
 
 
@@ -50,13 +52,14 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		}
 	}
 
-	load(cwd: string, target: string, procArgs: string, separateConsole: string, autorun: string[]): Thenable<any> {
+	load(cwd: string, target: string, procArgs: string, separateConsole: string, autorun: string[], targetFilter: string): Thenable<any> {
 		if (!path.isAbsolute(target))
 			target = path.join(cwd, target);
 		return new Promise((resolve, reject) => {
 			const args = this.preargs.concat(this.extraargs || []);
 			this.process = ChildProcess.spawn(this.application, args, { cwd: cwd, env: this.procEnv });
 			this.mode = XSDBMode.Banner;
+			this.targetFilter = targetFilter;
 			this.process.stdout.on("data", this.stdout.bind(this));
 			this.process.stderr.on("data", this.stderr.bind(this));
 			this.process.on("exit", (() => { this.emit("quit"); }).bind(this));
@@ -235,22 +238,18 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 						const parsed = parseXSDBP(line, this.mode);
 						if (this.debugOutput)
 							this.log("log", "XSDB -> App: " + JSON.stringify(parsed));
-						let handled = false;
-						if (parsed.token !== undefined) {
-							if (this.handlers[parsed.token]) {
-								this.handlers[parsed.token](parsed);
-								delete this.handlers[parsed.token];
-								handled = true;
-							}
-						}
-						if (!handled && parsed.resultRecords && parsed.resultRecords.resultClass == "error") {
+						if (parsed.resultRecords && parsed.resultRecords[0].key == "Error") {
 							this.log("stderr", parsed.result("msg") || line);
 						}
 						if (parsed.outOfBandRecord) {
-							parsed.outOfBandRecord.forEach(record => {
-								if (record.isStream) {
-									this.log(record.type, record.content);
-								} else {
+							const record = parsed.outOfBandRecord;
+							if (record.running) {
+								if (record.status == "Disabled") this.emit("exited-normally", parsed);
+								else this.emit("running", parsed);
+							}
+							else this.emit("breakpoint", parsed);
+
+							/*
 									if (record.type == "exec") {
 										this.emit("exec-async-output", parsed);
 										if (record.asyncClass == "running")
@@ -328,17 +327,29 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 									}
 								}
 							});
-							handled = true;
+							*/
 						}
-						if (parsed.token == undefined && parsed.resultRecords == undefined && parsed.outOfBandRecord.length == 0)
-							handled = true;
-						if (!handled)
-							this.log("log", "Unhandled: " + JSON.stringify(parsed));
 					}
 				
-				break;
-			case XSDBMode.ListingTarget:
-				break;
+					break;
+				case XSDBMode.WaitingForValue:
+					break;
+				case XSDBMode.AddingBreakpoint:
+					break;
+				case XSDBMode.ListingTarget:
+					break;
+				case XSDBMode.ListingRegister:
+					break;
+				case XSDBMode.ListingBacktrace:
+					break;
+				case XSDBMode.ListingBreakpoints:
+					break;
+				case XSDBMode.ListingDisassembly:
+					break;
+				case XSDBMode.ListingLocals:
+					break;
+				case XSDBMode.ListingMemory:
+					break;
 			}
 		});
 	}
@@ -546,9 +557,9 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 			this.breakpoints = new Map();
 			breakpoints.forEach((k, index) => {
 				if (index.file === source) {
-					promises.push(this.sendCommand("break-delete " + k).then((result) => {
-						if (result.resultRecords.key == "TODO") resolve(true);
-						else resolve(false);
+					promises.push(this.sendCommand("bpremove " + k).then((result) => {
+						if (result.resultRecords.key == "Error") resolve(false);
+						else resolve(true);
 					}));
 				} else {
 					this.breakpoints.set(index, k);
@@ -561,8 +572,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 	async getThreads(): Promise<Thread[]> {
 		if (trace) this.log("stderr", "getThreads");
 
-		const command = "thread-info";
-		const result = await this.sendCommand(command);
+		const result = await this.sendCommand("targets" + (this.targetFilter ? " -filter " + this.targetFilter : ""));
 		const threads = result.result("threads");
 		const ret: Thread[] = [];
 		return threads.map(element => {
@@ -753,7 +763,6 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 	features: string[];
 	public procEnv: any;
 	protected mode: XSDBMode;
-	protected sshReady: boolean;
 	protected currentToken: number = 1;
 	protected handlers: { [index: number]: (info: XSDBLine) => any } = {};
 	protected breakpoints: Map<Breakpoint, Number> = new Map();
@@ -761,5 +770,5 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 	protected errbuf: string;
 	protected process: ChildProcess.ChildProcess;
 	protected stream;
-	protected sshConn;
+	protected targetFilter: string;
 }

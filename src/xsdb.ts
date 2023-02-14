@@ -19,6 +19,7 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
 	valuesFormatting: ValuesFormattingMode;
 	printCalls: boolean;
 	showDevDebugOutput: boolean;
+	xsdb_target_filter: string;
 }
 
 class XSDBDebugSession extends XSDBPDebugSession {
@@ -48,7 +49,7 @@ class XSDBDebugSession extends XSDBPDebugSession {
 		this.xsdbDebugger.debugOutput = !!args.showDevDebugOutput;
 		this.stopAtEntry = args.stopAtEntry;
 
-		this.xsdbDebugger.load(args.cwd, args.target, args.arguments, args.terminal, args.autorun || []).then(() => {
+		this.xsdbDebugger.load(args.cwd, args.target, args.arguments, args.terminal, args.autorun || [], args.xsdb_target_filter).then(() => {
 			this.sendResponse(response);
 		}, err => {
 			this.sendErrorResponse(response, 103, `Failed to load MI Debugger: ${err.toString()}`);

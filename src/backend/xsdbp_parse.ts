@@ -11,7 +11,76 @@ export enum XSDBMode
 	ListingBacktrace,
 	WaitingForValue,
 	AddingBreakpoint,
-};
+	Error,
+	Prompt,
+}
+
+export class XSDBInterrupt
+{
+	core: string;
+	target: number;
+	running: boolean;
+	pc: number;
+	status: string;
+
+	sourceLines: { key: string, value: string, func: string, file: string, line: number }[];
+}
+
+export class XSDBRegisters
+{
+	regs: {key: string, value: string, valueFromHex: number}[];
+}
+
+export class XSDBMemory
+{
+	mem: {address: number, value: number}[];
+}
+
+export class XSDBLocals
+{
+	variables: {name: string, value: string}[];
+}
+
+export class XSDBTargets
+{
+	targets: { key: string, value: string, target: number, targetName?: string, pos?:string, state?:string }[];
+}
+
+export class XSDBBreakpoints
+{
+	breakpoints: { id: number, target: number, location: string, pos: number, enabled: boolean } [];
+}
+
+export class XSDBDisassembly
+{
+	mem: {address: number, program: string, value: string }[];
+}
+
+export class XSDBBackTraces
+{
+	core: string;
+	target: number;
+	targetName?: string;
+	status: string;
+
+	frame: { index: number, line: number, file: string, address: number, func: string }[];
+}
+
+export class XSDBSimpleValue
+{
+	value: string;
+}
+
+export class XSDBError
+{
+	message: string;
+}
+
+export class XSDBAnswer 
+{
+	mode: XSDBMode;
+	value: null | XSDBTargets | XSDBRegisters | XSDBMemory | XSDBBreakpoints | XSDBLocals | XSDBDisassembly | XSDBBackTraces | XSDBSimpleValue | XSDBInterrupt | XSDBError;
+}
 
 export interface XSDBLineInfo {
 	mode: XSDBMode;
@@ -156,139 +225,27 @@ const keyValuePair = /^ *([^:]+) *: *(.+) *$/;
 const funcFileLine = /^([_a-zA-Z][_a-zA-Z0-9]*)\(\) at ([^:]+): *(\d+) *$/;
 const prompt = /^xsdb% $/;
 const targetExtract = /^ *(\d+) *((?:[-_a-zA-Z0-9] ?)+)(?:#(\d+)|\[(\d+,\d+)\]|) *(?:\(([a-z A-Z]+)\)|).*$/;
+const extractBreakpoint = /(\d+) *(\d+) *([_a-zA-Z0-9]+) *target (\d+): \{Address ([xA-Fa-f0-9]+) HitCount (\d+)\}/;
+const extractContext = /Context ((?:[-_a-zA-Z0-9] ?)+)(?:#(\d+)|\[(\d+,\d+)\]|) state: ([A-Za-z ]+)/;
+const extractBacktraceLine = /^\s+(\d+)\s+([xa-fA-F0-9]+) ([_a-zA-Z0-9]+)\(\)(?:[+0-9]+: ([_.a-zA-Z0-9]+), line (\d+)|)/;
+const breakpointIndex = /^(\d+)$/;
+const breakpointDesc = /^ *target (\d+): \{Address: ([x0-9a-fA-F]+) Type: ([a-zA-Z]+)\}$/;
+const disassemblyLine = /^([0-9A-Fa-f]+): ((?:0x[0-9a-fA-F]{2} *)+)(.*)$/;
+const memoryLine = /^ *([0-9A-Fa-f]+): *([0-9A-Fa-f]+)/;
+const registerMatch = / *([_a-z0-9]+): (N\/A|[0-9A-Fa-f]+)/;
+
 
 export function parseXSDBP(output: string, parsingMode: XSDBMode): XSDBLine {
-	/*
-		output ==>
-			(
-				exec-async-output     = [ token ] "*" ("stopped" | others) ( "," variable "=" (const | tuple | list) )* \n
-				status-async-output   = [ token ] "+" ("stopped" | others) ( "," variable "=" (const | tuple | list) )* \n
-				notify-async-output   = [ token ] "=" ("stopped" | others) ( "," variable "=" (const | tuple | list) )* \n
-				console-stream-output = "~" c-string \n
-				target-stream-output  = "@" c-string \n
-				log-stream-output     = "&" c-string \n
-			)*
-			[
-				[ token ] "^" ("done" | "running" | "connected" | "error" | "exit") ( "," variable "=" (const | tuple | list) )* \n
-			]
-			"(gdb)" \n
-	*/
-
 	let token = undefined;
 	const outOfBandRecord = [];
 	const outOfBandPos = [];
 	let resultRecords = undefined;
 
-	const asyncRecordType = {
-		"*": "exec",
-		"+": "status",
-		"=": "notify"
-	};
-	const streamRecordType = {
-		"~": "console",
-		"@": "target",
-		"&": "log"
-	};
-
-	const parseCString = () => {
-		if (output[0] != '"')
-			return "";
-		let stringEnd = 1;
-		let inString = true;
-		let remaining = output.substring(1);
-		let escaped = false;
-		while (inString) {
-			if (escaped)
-				escaped = false;
-			else if (remaining[0] == '\\')
-				escaped = true;
-			else if (remaining[0] == '"')
-				inString = false;
-
-			remaining = remaining.substring(1);
-			stringEnd++;
-		}
-		let str;
-		try {
-			str = parseString(output.substring(0, stringEnd));
-		} catch (e) {
-			str = output.substring(0, stringEnd);
-		}
-		output = output.substring(stringEnd);
-		return str;
-	};
-
-	let parseValue, parseCommaResult, parseCommaValue, parseResult;
-
-	const parseTupleOrList = () => {
-		if (output[0] != '{' && output[0] != '[')
-			return undefined;
-		const oldContent = output;
-		const canBeValueList = output[0] == '[';
-		output = output.substring(1);
-		if (output[0] == '}' || output[0] == ']') {
-			output = output.substring(1); // ] or }
-			return [];
-		}
-		if (canBeValueList) {
-			let value = parseValue();
-			if (value !== undefined) { // is value list
-				const values = [];
-				values.push(value);
-				const remaining = output;
-				while ((value = parseCommaValue()) !== undefined)
-					values.push(value);
-				output = output.substring(1); // ]
-				return values;
-			}
-		}
-		let result = parseResult();
-		if (result) {
-			const results = [];
-			results.push(result);
-			while (result = parseCommaResult())
-				results.push(result);
-			output = output.substring(1); // }
-			return results;
-		}
-		output = (canBeValueList ? '[' : '{') + output;
-		return undefined;
-	};
-
-	parseValue = () => {
-		if (output[0] == '"')
-			return parseCString();
-		else if (output[0] == '{' || output[0] == '[')
-			return parseTupleOrList();
-		else
-			return undefined;
-	};
-
-	parseResult = () => {
-		const variableMatch = variableRegex.exec(output);
-		if (!variableMatch)
-			return undefined;
-		output = output.substring(variableMatch[0].length + 1);
-		const variable = variableMatch[1];
-		return [variable, parseValue()];
-	};
-
-	parseCommaValue = () => {
-		if (output[0] != ',')
-			return undefined;
-		output = output.substring(1);
-		return parseValue();
-	};
-
-	parseCommaResult = () => {
-		if (output[0] != ',')
-			return undefined;
-		output = output.substring(1);
-		return parseResult();
-	};
-
 	let match = undefined;
 
+	if (output == "xsdb% " || output == "xsdb% \r\n") {
+		return new XSDBLine(XSDBMode.Prompt, null, null, []);
+	}
 
 	if (parsingMode == XSDBMode.Waiting) {
 		if (match = outOfBandRecordRegex.exec(output)) {
@@ -339,21 +296,123 @@ export function parseXSDBP(output: string, parsingMode: XSDBMode): XSDBLine {
 	} else if (parsingMode == XSDBMode.ListingTarget) {
 		if (match = targetExtract.exec(output)) {
 			const target = {
-				key: match[1],
+				key: match[1], // Target ID
 				value: match[0],
-				target: parseInt(match[1]),
-				targetName: match[2].trim(),
-				pos: match[3] ? match[3] : (match[4] ? match[4] : null),
-				state: match[5] ? match[5] : null,
+				target: parseInt(match[1]), // Target ID
+				targetName: match[2].trim(), // Core name
+				pos: match[3] ? match[3] : (match[4] ? match[4] : null), // Core complex address or number
+				state: match[5] ? match[5] : null, // Status
 			};
 			return new XSDBLine(XSDBMode.ListingTarget, null, null, [target]);
-		} else
-		{
-			
 		}
+	} else if (parsingMode == XSDBMode.ListingBreakpoints) {
+		if (match = extractBreakpoint.exec(output)) {
+			const breakpoint = {
+				key: match[1], // ID
+				value: match[0],
+				target: parseInt(match[4]), // Target number
+				targetName: match[3], // Location (address or function name)
+				pos: match[5], // Address
+				state: match[2], // Enabled = 1 or not
+			};
+			return new XSDBLine(XSDBMode.ListingBreakpoints, null, null, [breakpoint]);
+		} else return new XSDBLine(XSDBMode.ListingBreakpoints, null, null, []);
+	} else if (parsingMode == XSDBMode.ListingBacktrace) {
+		if (match = extractContext.exec(output)) {
+			const backtrace = {
+				key: match[1], // Core base name
+				value: match[0],
+				target: match[2] ? parseInt(match[2]) : 0, // Core number if simple
+				targetName: match[3] ? match[3] : null, // Core number if complex
+				pos: null,
+				state: match[4], // Status
+			};
+			return new XSDBLine(XSDBMode.ListingBacktrace, null, null, [backtrace]);
+		} else if (match = extractBacktraceLine.exec(output)) {
+			const backtrace = {
+				key: match[1], 
+				value: match[0],
+				target: match[5] ? parseInt(match[5]) : 0, // Line number
+				targetName: match[4] ? match[4] : null, // File name
+				pos: match[2], // Address in hex
+				state: match[3], // Function name
+			};
+			return new XSDBLine(XSDBMode.ListingBacktrace, null, null, [backtrace]);
+		} else return new XSDBLine(XSDBMode.ListingBacktrace, null, null, []);
+	} else if (parsingMode == XSDBMode.AddingBreakpoint) {
+		if (match = breakpointIndex.exec(output)) {
+			return new XSDBLine(XSDBMode.AddingBreakpoint, null, null, [{key: match[1], value: match[0]}]);
+		} else if (match = breakpointDesc.exec(output)) {
+			const breakpoint = {
+				key: "", 
+				value: match[0],
+				target: parseInt(match[1]), // Target number
+				targetName: null, 
+				pos: match[2], // Address in hex
+				state: match[3], // Function name
+			};
+			return new XSDBLine(XSDBMode.AddingBreakpoint, null, null, [breakpoint]);
+		} else return new XSDBLine(XSDBMode.AddingBreakpoint, null, null, []);
+	} else if (parsingMode == XSDBMode.ListingDisassembly) {
+		if (match = disassemblyLine.exec(output)) {
+			const disassembly = {
+				key: match[1], // Address
+				value: match[0],
+				target: null, 
+				targetName: match[2], // Hexdump of program memory (variable)
+				pos: match[1], // Address
+				state: match[3], // Disassembly
+			};
+			return new XSDBLine(XSDBMode.ListingDisassembly, null, null, [disassembly]);
+		} else return new XSDBLine(XSDBMode.ListingDisassembly, null, null, []);
+	} else if (parsingMode == XSDBMode.ListingMemory) {
+		if (match = memoryLine.exec(output)) {
+			const memory = {
+				key: match[1], // Address
+				value: match[2],
+				target: null, 
+				targetName: null, 
+				pos: match[1], // Address
+				state: null, 
+			};
+			return new XSDBLine(XSDBMode.ListingMemory, null, null, [memory]);
+		} else return new XSDBLine(XSDBMode.ListingMemory, null, null, []);
+	} else if (parsingMode == XSDBMode.ListingLocals) {
+		if (match = keyValuePair.exec(output)) {
+			const local = {
+				key: match[1], // Address
+				value: match[2],
+				target: null, 
+				targetName: null, 
+				pos: null, // Address
+				state: null, 
+			};
+			return new XSDBLine(XSDBMode.ListingLocals, null, null, [local]);
+		} 
+	} else if (parsingMode == XSDBMode.ListingRegister) {
+		resultRecords = [];
+		while (match = registerMatch.exec(output)) {
+			const reg = {
+				key: match[1],
+				value: match[2],
+				valueFromHex: match[2] == 'N/A' ? null : parseInt(match[2], 16),
+			};
+			resultRecords.push(reg);
+			output = output.substring(match[0].length);
+		}
+		return new XSDBLine(XSDBMode.ListingRegister, null, null, resultRecords);
 	}
 	if (!output.length || prompt.exec(output)) {
 		return new XSDBLine(XSDBMode.Waiting, null, null, []);
 	}
 	return new XSDBLine(parsingMode, null, null, [{key:"Error", value:"Unexpected line: "+ output, valueFromHex:0}]);
+}
+
+function mergeLines(lines: XSDBLine[]) : XSDBAnswer {
+	if (!lines.length) return new XSDBAnswer;
+	const mode = lines.length ? lines[0].mode : XSDBMode
+	switch(mode) 
+	{
+
+	}
 }
