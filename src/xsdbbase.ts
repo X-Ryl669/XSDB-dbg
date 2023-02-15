@@ -192,7 +192,7 @@ export class XSDBPDebugSession extends DebugSession {
 
 				const res = await this.xsdbDebugger.varAssign(name, args.value);
 				response.body = {
-					value: res.result("value")
+					value: res.complete ? args.value : "error"
 				};
 			} else {
 				await this.xsdbDebugger.changeVariable(args.name, args.value);
@@ -558,44 +558,7 @@ export class XSDBPDebugSession extends DebugSession {
 					};
 					const addOne = async () => {
 						// TODO: this evaluates on an (effectively) unknown thread for multithreaded programs.
-						const variable = await this.xsdbDebugger.evalExpression(JSON.stringify(`${varReq.name}+${arrIndex})`), 0, 0);
-						try {
-							const expanded = expandValue(createVariable, variable.result("value"), varReq.name, variable);
-							if (!expanded) {
-								this.sendErrorResponse(response, 15, `Could not expand variable`);
-							} else {
-								if (typeof expanded == "string") {
-									if (expanded == "<nullptr>") {
-										if (argsPart)
-											argsPart = false;
-										else
-											return submit();
-									} else if (expanded[0] != '"') {
-										strArr.push({
-											name: "[err]",
-											value: expanded,
-											variablesReference: 0
-										});
-										return submit();
-									}
-									strArr.push({
-										name: `[${(arrIndex++)}]`,
-										value: expanded,
-										variablesReference: 0
-									});
-									addOne();
-								} else {
-									strArr.push({
-										name: "[err]",
-										value: expanded,
-										variablesReference: 0
-									});
-									submit();
-								}
-							}
-						} catch (e) {
-							this.sendErrorResponse(response, 14, `Could not expand variable: ${e}`);
-						}
+						this.sendErrorResponse(response, 14, `Could not expand variable: ${id.name}`);
 					};
 					addOne();
 				} else
@@ -673,15 +636,7 @@ export class XSDBPDebugSession extends DebugSession {
 	protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
 		const [threadId, level] = this.frameIdToThreadAndLevel(args.frameId);
 		if (args.context == "watch" || args.context == "hover") {
-			this.xsdbDebugger.evalExpression(args.expression, threadId, level).then((res) => {
-				response.body = {
-					variablesReference: 0,
-					result: res.result("value")
-				};
-				this.sendResponse(response);
-			}, msg => {
-				this.sendErrorResponse(response, 7, msg.toString());
-			});
+			this.sendErrorResponse(response, 7, "Unsupported feature");
 		} else {
 			this.xsdbDebugger.sendUserInput(args.expression, threadId, level).then(output => {
 				if (typeof output == "undefined")

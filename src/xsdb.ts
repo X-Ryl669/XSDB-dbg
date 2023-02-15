@@ -1,8 +1,7 @@
 import { XSDBPDebugSession, RunCommand } from './xsdbbase';
 import { DebugSession, InitializedEvent, TerminatedEvent, StoppedEvent, OutputEvent, Thread, StackFrame, Scope, Source, Handles } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
-import { XMI_XSDB } from "./backend/xsdbp/xsdbp";
-import { escape } from "./backend/xsdbp/mi2";
+import { XMI_XSDB, escape } from "./backend/xsdbp/xsdbp";
 import { ValuesFormattingMode } from './backend/backend';
 
 export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {

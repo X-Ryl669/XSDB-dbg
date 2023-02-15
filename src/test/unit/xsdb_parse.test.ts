@@ -53,6 +53,7 @@ const exampleComm : TestLine[]= [
    { mode:XSDBMode.AddingBreakpoint, 	line:"15"},
    { mode:XSDBMode.AddingBreakpoint, 	line:"Info: Breakpoint 15 status:"},
    { mode:XSDBMode.AddingBreakpoint, 	line:"   target 18: {Address: 0x110 Type: Hardware}"},
+   { mode:XSDBMode.AddingBreakpoint, 	line:"   target 17: {Unresolved source line information}"},
    { mode:XSDBMode.Waiting, 				line:"invalid command name \"status\""},
    { mode:XSDBMode.Waiting, 				line:"Core is disabled"},
    { mode:XSDBMode.Waiting, 				line:"Already stopped"},
@@ -208,8 +209,8 @@ suite("XSDB Parse", () => {
 		parsed = parseExampleComm(42);
 		assert.deepStrictEqual(parsed.resultRecords[0], { key: "1", value: "    1  0x260 stream_datamover()", target: 0, targetName: null, pos: "0x260", state: "stream_datamover" });
 	});		
-	test("Listing backtrace", () => {
-		for (let i = 43; i < 46; i++) {
+	test("Adding breakpoint", () => {
+		for (let i = 43; i < 47; i++) {
 			const parsed = parseExampleComm(i);
 			assert.ok(parsed);
 			assert.strictEqual(parsed.mode, XSDBMode.AddingBreakpoint);
@@ -223,7 +224,7 @@ suite("XSDB Parse", () => {
 		assert.deepStrictEqual(parsed.resultRecords[0], { key: "", value: "   target 18: {Address: 0x110 Type: Hardware}", target: 18, targetName: null, pos: "0x110", state: "Hardware" });
 	});		
 	test("Errors", () => {
-		for (let i = 46; i < 49; i++) {
+		for (let i = 47; i < 50; i++) {
 			const parsed = parseExampleComm(i);
 			assert.ok(parsed);
 			assert.strictEqual(parsed.mode, XSDBMode.Waiting);
@@ -234,7 +235,7 @@ suite("XSDB Parse", () => {
 		}
 	});
 	test("Disassembly", () => {
-		for (let i = 49; i < 56; i++) {
+		for (let i = 50; i < 57; i++) {
 			const parsed = parseExampleComm(i);
 			assert.ok(parsed);
 			assert.strictEqual(parsed.mode, XSDBMode.ListingDisassembly);
@@ -245,7 +246,7 @@ suite("XSDB Parse", () => {
 		}
 	});	
 	test("Memory", () => {
-		for (let i = 57; i < 61; i++) {
+		for (let i = 58; i < 62; i++) {
 			const parsed = parseExampleComm(i);
 			assert.ok(parsed);
 			assert.strictEqual(parsed.mode, XSDBMode.ListingMemory);
@@ -256,7 +257,7 @@ suite("XSDB Parse", () => {
 		}
 	});	
 	test("Locals", () => {
-		for (let i = 61; i < 63; i++) {
+		for (let i = 62; i < 64; i++) {
 			const parsed = parseExampleComm(i);
 			assert.ok(parsed);
 			assert.strictEqual(parsed.mode, XSDBMode.ListingLocals);
@@ -266,14 +267,14 @@ suite("XSDB Parse", () => {
 		}
 	});	
 	test("Registers", () => {
-		for (let i = 63; i < 78; i++) {
+		for (let i = 64; i < 79; i++) {
 			const parsed = parseExampleComm(i);
 			assert.ok(parsed);
 			assert.strictEqual(parsed.mode, XSDBMode.ListingRegister);
 			assert.strictEqual(parsed.outOfBandRecord, null);
 			assert.strictEqual(parsed.outOfBandPos, null);
-			assert.strictEqual(parsed.resultRecords.length, i == 69 || i == 72 ? 2 : i < 72 ? 3 : 0);
-			if (i == 69) {
+			assert.strictEqual(parsed.resultRecords.length, i == 70 || i == 73 ? 2 : i < 73 ? 3 : 0);
+			if (i == 70) {
 				assert.strictEqual(parsed.resultRecords[0].key, "sp");
 				assert.strictEqual(parsed.resultRecords[0].value, "00030020");
 				assert.strictEqual(parsed.resultRecords[0].valueFromHex, 0x00030020);
@@ -281,7 +282,7 @@ suite("XSDB Parse", () => {
 				assert.strictEqual(parsed.resultRecords[1].key, "lr");
 				assert.strictEqual(parsed.resultRecords[1].value, "00000260");
 				assert.strictEqual(parsed.resultRecords[1].valueFromHex, 0x00000260);
-			} else if (i < 72) assert.strictEqual(parsed.resultRecords[0].value, "N/A");
+			} else if (i < 73) assert.strictEqual(parsed.resultRecords[0].value, "N/A");
 		}
 	});	
 
