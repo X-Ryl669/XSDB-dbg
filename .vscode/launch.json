@@ -10,6 +10,7 @@
 			"args": ["--extensionDevelopmentPath=${workspaceRoot}" ],
 			"stopOnEntry": false,
 			"sourceMaps": true,
+			"trace": true,
 			"outFiles": [
 				"${workspaceRoot}/out/**/*.js"
 			],
@@ -24,6 +25,7 @@
 			"stopOnEntry": false,
 			"args": [ "--server=4711" ],
 			"sourceMaps": true,
+			"trace": true,
 			"outFiles": [
 				"${workspaceRoot}/out/**/*.js"
 			],

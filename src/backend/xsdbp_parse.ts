@@ -1,3 +1,5 @@
+import { EventEmitter } from "stream";
+
 export enum XSDBMode
 {
 	Waiting,
@@ -68,6 +70,7 @@ export class XSDBMemory
 	mem: {address: number, value: number}[];
 
 	append(line: XSDBLineInfo) {
+		if (!line.resultRecords.length) return;
 		this.mem.push({ address: parseInt(line.resultRecords[0].key, 16), value: parseInt(line.resultRecords[0].value, 16)});
 	}
 
@@ -78,15 +81,25 @@ export class XSDBLocals
 	variables: {name: string, value: string}[];
 
 	append(line: XSDBLineInfo) {
+		if (!line.resultRecords.length) return;
 		this.variables.push({ name: line.resultRecords[0].key, value: line.resultRecords[0].value });
 	}
 }
 
+export class XSDBTargetItem
+{
+	target: number;
+	targetName?: string;
+	pos?:string;
+	state?:string;
+}
+
 export class XSDBTargets
 {
-	targets: { target: number, targetName?: string, pos?:string, state?:string }[];
+	targets: XSDBTargetItem[];
 
 	append(line: XSDBLineInfo) {
+		if (!line.resultRecords.length) return;
 		this.targets.push({ target: line.resultRecords[0].target, targetName: line.resultRecords[0].targetName, pos: line.resultRecords[0].pos, state: line.resultRecords[0].state });
 	}
 }
@@ -96,6 +109,7 @@ export class XSDBBreakpoints
 	breakpoints: { id: number, target: number, location: string, pos: number, enabled: boolean } [];
 
 	append(line: XSDBLineInfo) {
+		if (!line.resultRecords.length) return;
 		this.breakpoints.push({ id: parseInt(line.resultRecords[0].key), target: line.resultRecords[0].target, location: line.resultRecords[0].targetName, pos: parseInt(line.resultRecords[0].pos, 16), enabled: line.resultRecords[0].state == "1"});
 	}
 
@@ -106,6 +120,7 @@ export class XSDBDisassembly
 	mem: {address: number, program: string, value: string }[];
 
 	append(line: XSDBLineInfo) {
+		if (!line.resultRecords.length) return;
 		this.mem.push({ address: parseInt(line.resultRecords[0].key, 16), program: line.resultRecords[0].targetName, value: line.resultRecords[0].state});
 	}
 
@@ -122,6 +137,7 @@ export class XSDBBackTraces
 
 	append(line: XSDBLineInfo) 
 	{
+		if (!line.resultRecords.length) return;
 		if (line.resultRecords[0].pos == null) {
 			this.core = line.resultRecords[0].key;
 			this.target = line.resultRecords[0].target;
@@ -139,7 +155,8 @@ export class XSDBSimpleValue
 
 	append(line: XSDBLineInfo)
 	{
-		this.value = line.resultRecords[0].value;
+		if (line.resultRecords.length)
+			this.value = line.resultRecords[0].value;
 	}
 }
 
@@ -151,6 +168,7 @@ export class XSDBAddedBreakpoint
 
 	append(line: XSDBLineInfo)
 	{
+		if (!line.resultRecords.length) return;
 		if (line.resultRecords[0].target == null)
 			this.id = parseInt(line.resultRecords[0].value);
 		else 
@@ -181,7 +199,7 @@ export class XSDBAnswer
 		this.mode = mode;
 		this.value = value;
 		this.interrupt = null;
-		this.complete = false;
+		this.complete = true;
 	}
 }
 
@@ -538,7 +556,7 @@ function isInterrupt(answer: XSDBAnswer, line: XSDBLineInfo, mode: XSDBMode) : n
 	return 2;
 }
 
-export function mergeLines(lines: XSDBLine[]) : XSDBAnswer {
+export function mergeLines(lines: XSDBLine[], ee: EventEmitter) : XSDBAnswer {
 	if (!lines.length) return new XSDBAnswer(XSDBMode.Error, new XSDBError("Empty answer"));
 	const mode = lines[0].mode;
 	let answer = new XSDBAnswer(mode, null);
@@ -623,6 +641,14 @@ export function mergeLines(lines: XSDBLine[]) : XSDBAnswer {
 		}
 		break;
 	case XSDBMode.WaitingForValue: 
+		answer.value = new XSDBSimpleValue;
+		for (let line of lines) {
+			const type = isInterrupt(answer, line, mode);
+			if (type < 0) break;
+			if (type == 1) continue;
+			answer.value.append(line);
+		}
+		break;
 	case XSDBMode.AddingBreakpoint: 
 		answer.value = new XSDBAddedBreakpoint;
 		for (let line of lines) {
@@ -633,8 +659,10 @@ export function mergeLines(lines: XSDBLine[]) : XSDBAnswer {
 		}
 		break;
 	case XSDBMode.Error:
-	case XSDBMode.Prompt: // Should never happen
 		answer.value = new XSDBError(lines[0].resultRecords[0].value);
+		break;
+	case XSDBMode.Prompt: // Should never happen
+		answer.mode = XSDBMode.Waiting;
 		break;
 	}
 	return answer;
