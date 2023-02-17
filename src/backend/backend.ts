@@ -34,7 +34,7 @@ export interface Variable {
 }
 
 export interface IBackend {
-	load(cwd: string, target: string, procArgs: string, separateConsole: string, autorun: string[], filterType: string): Thenable<any>;
+	load(cwd: string, target: string, procArgs: string, separateConsole: string, autorun: string[], filterType: string, symbol_mapper: string): Thenable<any>;
 	connect(cwd: string, executable: string, target: string, autorun: string[]): Thenable<any>;
 	start(runToStart: boolean): Thenable<boolean>;
 	stop();

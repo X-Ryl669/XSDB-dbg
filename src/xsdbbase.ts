@@ -2,7 +2,7 @@ import * as DebugAdapter from 'vscode-debugadapter';
 import { DebugSession, InitializedEvent, TerminatedEvent, StoppedEvent, ThreadEvent, OutputEvent, ContinuedEvent, Thread, StackFrame, Scope, Source, Handles } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { Breakpoint, IBackend, Variable, VariableObject, ValuesFormattingMode, MIError } from './backend/backend';
-import { XSDBLine } from './backend/xsdbp_parse';
+import { XSDBAnswer, XSDBTargets, XSDBLine } from './backend/xsdbp_parse';
 import { expandValue, isExpandable } from './backend/gdb_expansion';
 import { XMI_XSDB } from './backend/xsdbp/xsdbp';
 import * as systemPath from "path";
@@ -116,40 +116,40 @@ export class XSDBPDebugSession extends DebugSession {
 		this.sendEvent(new OutputEvent(msg, type));
 	}
 
-	protected handleBreakpoint(info: XSDBLine) {
-		const event = new StoppedEvent("breakpoint", parseInt(info.record("thread-id")));
-		(event as DebugProtocol.StoppedEvent).body.allThreadsStopped = info.record("stopped-threads") == "all";
+	protected handleBreakpoint(answer: XSDBAnswer) {
+		const event = new StoppedEvent("breakpoint", answer.interrupt.target);
+		(event as DebugProtocol.StoppedEvent).body.allThreadsStopped = false;
 		this.sendEvent(event);
 	}
 
-	protected handleBreak(info?: XSDBLine) {
-		const event = new StoppedEvent("step", info ? parseInt(info.record("thread-id")) : 1);
-		(event as DebugProtocol.StoppedEvent).body.allThreadsStopped = info ? info.record("stopped-threads") == "all" : true;
+	protected handleBreak(answer?: XSDBAnswer) {
+		const event = new StoppedEvent("step", answer ? answer.interrupt.target : 1);
+		(event as DebugProtocol.StoppedEvent).body.allThreadsStopped = false;
 		this.sendEvent(event);
 	}
 
-	protected handlePause(info: XSDBLine) {
-		const event = new StoppedEvent("user request", parseInt(info.record("thread-id")));
-		(event as DebugProtocol.StoppedEvent).body.allThreadsStopped = info.record("stopped-threads") == "all";
+	protected handlePause(answer: XSDBAnswer) {
+		const event = new StoppedEvent("user request", answer.interrupt.target);
+		(event as DebugProtocol.StoppedEvent).body.allThreadsStopped = false;
 		this.sendEvent(event);
 	}
 
-	protected stopEvent(info: XSDBLine) {
+	protected stopEvent(answer: XSDBAnswer) {
 		if (!this.started)
 			this.crashed = true;
 		if (!this.quit) {
-			const event = new StoppedEvent("exception", parseInt(info.record("thread-id")));
-			(event as DebugProtocol.StoppedEvent).body.allThreadsStopped = info.record("stopped-threads") == "all";
+			const event = new StoppedEvent("exception", answer.interrupt.target);
+			(event as DebugProtocol.StoppedEvent).body.allThreadsStopped = false;
 			this.sendEvent(event);
 		}
 	}
 
-	protected threadCreatedEvent(info: XSDBLine) {
-		this.sendEvent(new ThreadEvent("started", info.record("id")));
+	protected threadCreatedEvent(info: XSDBAnswer) {
+		this.sendEvent(new ThreadEvent("started", info.value ? (info.value as XSDBTargets).targets[0].target : 0));
 	}
 
-	protected threadExitedEvent(info: XSDBLine) {
-		this.sendEvent(new ThreadEvent("exited", info.record("id")));
+	protected threadExitedEvent(info: XSDBAnswer) {
+		this.sendEvent(new ThreadEvent("exited", info.value ? (info.value as XSDBTargets).targets[0].target : 0));
 	}
 
 	protected quitEvent() {

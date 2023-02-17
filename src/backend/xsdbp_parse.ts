@@ -36,6 +36,7 @@ export class XSDBInterrupt
 
 	constructor(line: XSDBLineInfo)
 	{
+		this.sourceLines = [];
 		this.append(line);
 	}
 
@@ -55,7 +56,7 @@ export class XSDBInterrupt
 
 export class XSDBRegisters
 {
-	regs: {key: string, value: string, valueFromHex: number}[];
+	constructor(public regs: {key: string, value: string, valueFromHex: number}[] = []){}
 
 	append(line: XSDBLineInfo) {
 		for (let rec of line.resultRecords) {
@@ -67,7 +68,7 @@ export class XSDBRegisters
 
 export class XSDBMemory
 {
-	mem: {address: number, value: number}[];
+	constructor(public mem: {address: number, value: number}[] = []) {}
 
 	append(line: XSDBLineInfo) {
 		if (!line.resultRecords.length) return;
@@ -78,7 +79,7 @@ export class XSDBMemory
 
 export class XSDBLocals
 {
-	variables: {name: string, value: string}[];
+	constructor(public variables: {name: string, value: string}[] = []) {}
 
 	append(line: XSDBLineInfo) {
 		if (!line.resultRecords.length) return;
@@ -88,15 +89,12 @@ export class XSDBLocals
 
 export class XSDBTargetItem
 {
-	target: number;
-	targetName?: string;
-	pos?:string;
-	state?:string;
+	constructor(public target: number, public targetName: string = null, public pos:string = null, public state:string = null) {}
 }
 
 export class XSDBTargets
 {
-	targets: XSDBTargetItem[];
+	constructor(public targets: XSDBTargetItem[] = []) {}
 
 	append(line: XSDBLineInfo) {
 		if (!line.resultRecords.length) return;
@@ -106,7 +104,7 @@ export class XSDBTargets
 
 export class XSDBBreakpoints
 {
-	breakpoints: { id: number, target: number, location: string, pos: number, enabled: boolean } [];
+	constructor(public breakpoints: { id: number, target: number, location: string, pos: number, enabled: boolean } [] = []) {}
 
 	append(line: XSDBLineInfo) {
 		if (!line.resultRecords.length) return;
@@ -117,7 +115,7 @@ export class XSDBBreakpoints
 
 export class XSDBDisassembly
 {
-	mem: {address: number, program: string, value: string }[];
+	constructor(public mem: {address: number, program: string, value: string }[] = []) {}
 
 	append(line: XSDBLineInfo) {
 		if (!line.resultRecords.length) return;
@@ -135,6 +133,7 @@ export class XSDBBackTraces
 
 	frame: { index: number, line: number, file: string, address: number, func: string }[];
 
+	constructor() { this.frame = []; }
 	append(line: XSDBLineInfo) 
 	{
 		if (!line.resultRecords.length) return;
@@ -151,7 +150,7 @@ export class XSDBBackTraces
 
 export class XSDBSimpleValue
 {
-	value: string;
+	constructor(public value: string = "") {}
 
 	append(line: XSDBLineInfo)
 	{
@@ -162,9 +161,7 @@ export class XSDBSimpleValue
 
 export class XSDBAddedBreakpoint
 {
-	id: number;
-	target: number;
-	address : null | number;
+	constructor(public id: number = 0, public target: number = 0, public address:number = null) {}
 
 	append(line: XSDBLineInfo)
 	{
@@ -182,9 +179,7 @@ export class XSDBAddedBreakpoint
 
 export class XSDBError
 {
-	message: string;
-
-	constructor(msg: string) { this.message = msg; }
+	constructor(public message: string = "") {}
 }
 
 export class XSDBAnswer 
@@ -339,8 +334,8 @@ const variableRegex = /^([a-zA-Z_\-][a-zA-Z0-9_\-]*)/;
 const asyncClassRegex = /^[^,\r\n]+/;
 const keyValuePair = /^ *([^:]+) *: *(.+) *$/;
 const funcFileLine = /^([_a-zA-Z][_a-zA-Z0-9]*)\(\) at ([^:]+): *(\d+) *$/;
-const prompt = /^xsdb% $/;
-const targetExtract = /^ *(\d+) *((?:[-_a-zA-Z0-9] ?)+)(?:#(\d+)|\[(\d+,\d+)\]|) *(?:\(([a-z A-Z]+)\)|).*$/;
+const prompt = /^(xsdb% )+$/;
+const targetExtract = /^ *(\d+)\*? *((?:[-_a-zA-Z0-9] ?)+)(?:#(\d+)|\[(\d+,\d+)\]|) *(?:\(([a-z A-Z]+)\)|).*$/;
 const extractBreakpoint = /(\d+) *(\d+) *([_a-zA-Z0-9]+) *target (\d+): \{Address ([xA-Fa-f0-9]+) HitCount (\d+)\}/;
 const extractContext = /Context ((?:[-_a-zA-Z0-9] ?)+)(?:#(\d+)|\[(\d+,\d+)\]|) state: ([A-Za-z ]+)/;
 const extractBacktraceLine = /^\s+(\d+)\s+([xa-fA-F0-9]+) ([_a-zA-Z0-9]+)\(\)(?:[+0-9]+: ([_.a-zA-Z0-9]+), line (\d+)|)/;
@@ -360,7 +355,7 @@ export function parseXSDBP(output: string, parsingMode: XSDBMode): XSDBLine {
 
 	let match = undefined;
 
-	if (output == "xsdb% " || output == "xsdb% \r\n") {
+	if (prompt.exec(output)) {
 		return new XSDBLine(XSDBMode.Prompt, null, null, []);
 	}
 
@@ -540,23 +535,21 @@ function isInterrupt(answer: XSDBAnswer, line: XSDBLineInfo, mode: XSDBMode) : n
 		answer.complete = true; 
 		return 0; // We're done
 	}
+	// Error, this shouldn't happen unless it's an interrupt
+	if (line.mode == XSDBMode.Waiting && (line.outOfBandRecord != null || line.outOfBandPos != null)) {
+		if (answer.interrupt != null) answer.interrupt.append(line);
+		else answer.interrupt = new XSDBInterrupt(line);
+		return 1;
+	} 
 	if (line.mode != mode) {
-		// Error, this shouldn't happen unless it's an interrupt
-		if (line.mode == XSDBMode.Waiting && (line.outOfBandRecord != null || line.outOfBandPos != null)) {
-			if (answer.interrupt != null) answer.interrupt.append(line);
-			else answer.interrupt = new XSDBInterrupt(line);
-			return 1;
-		} 
-		else {
-			answer.mode = XSDBMode.Error;
-			answer.value = new XSDBError("Wrong answer line" + line.toString());
-			return -1;
-		}
+		answer.mode = XSDBMode.Error;
+		answer.value = new XSDBError("Wrong answer line: " + JSON.stringify(line) + " for mode:" + mode);
+		return -1;
 	}
 	return 2;
 }
 
-export function mergeLines(lines: XSDBLine[], ee: EventEmitter) : XSDBAnswer {
+export function mergeLines(lines: XSDBLine[], ee: EventEmitter = null) : XSDBAnswer {
 	if (!lines.length) return new XSDBAnswer(XSDBMode.Error, new XSDBError("Empty answer"));
 	const mode = lines[0].mode;
 	let answer = new XSDBAnswer(mode, null);
@@ -565,6 +558,7 @@ export function mergeLines(lines: XSDBLine[], ee: EventEmitter) : XSDBAnswer {
 	case XSDBMode.Waiting: 
 		for (let line of lines) {
 			const type = isInterrupt(answer, line, mode);
+			if (ee) ee.emit("msg", "stdout", "T:"+ type + "/" + mode + " " + JSON.stringify(line));
 			if (type < 0) break;
 			if (type == 1) continue;
 			answer.value = new XSDBError("Unexpected prompt from XSDB");
@@ -651,10 +645,12 @@ export function mergeLines(lines: XSDBLine[], ee: EventEmitter) : XSDBAnswer {
 		break;
 	case XSDBMode.AddingBreakpoint: 
 		answer.value = new XSDBAddedBreakpoint;
+		let counter = 0;
 		for (let line of lines) {
 			const type = isInterrupt(answer, line, mode);
 			if (type < 0) break;
-			if (type == 1) continue;
+			if (type == 0 && counter <= 1) { answer.complete = false; continue; } // Ignore first prompt
+			counter++;
 			answer.value.append(line);
 		}
 		break;

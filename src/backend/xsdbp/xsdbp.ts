@@ -9,7 +9,7 @@ import * as linuxTerm from '../linux/console';
 import * as net from "net";
 import * as fs from "fs";
 import * as path from "path";
-import { Client } from "ssh2";
+import { glob } from "glob";
 
 export function escape(str: string) {
 	return str.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
@@ -28,7 +28,12 @@ function couldBeOutput(line: string) {
 const trace = false;
 
 
-
+interface IFileSource
+{
+	file: string;
+	line: number;
+	func?: string;
+}
 
 
 export class XMI_XSDB extends EventEmitter implements IBackend {
@@ -54,6 +59,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 			this.procEnv = env;
 		}
 		this.protoLines = [];
+		this.currentTarget = 0;
 	}
 
 	async executeCommandsSequentially(cmds : string[], userFunc: boolean) {
@@ -63,24 +69,32 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		}
 	}
 
-	load(cwd: string, target: string, procArgs: string, separateConsole: string, autorun: string[], targetFilter: string): Thenable<any> {
+	load(cwd: string, target: string, procArgs: string, separateConsole: string, autorun: string[], targetFilter: string, symbol_mapper: string): Thenable<any> {
 		if (!path.isAbsolute(target))
 			target = path.join(cwd, target);
 		return new Promise((resolve, reject) => {
 			const args = this.preargs.concat(this.extraargs || []);
 			this.mode = XSDBMode.Banner;
 			this.handlers[XSDBMode.Banner] = (prompt: any) => { 
-				this.log("stdout", "Banner received"); this.mode = XSDBMode.Waiting;
+				this.log("console", "Banner received"); this.mode = XSDBMode.Waiting;
 
-				this.executeCommandsSequentially(promises, false).then(()=> {
-					this.log("stdout", "Running autorun commands");
-					this.executeCommandsSequentially(autorun, true).then(()=> {
-						this.emit("debug-ready");
-						resolve(undefined);
-					}, reject)
-				}, reject);
-		
+				// Poor man solution to have sequential async function with callback hell...
+				this.executeCommandsSequentially(promises, false)
+				.then(_ => this.log("console", "Running autorun commands"))
+				.then(_ => this.executeCommandsSequentially(autorun, true))
+				.then(_ => {
+						this.log("console", "Done running autorun commands");
+						this.log("console", "Clearing all breakpoints");
+				    })
+				.then(_ => this.sendCommand("bpr -all")) // Clean all previous breakpoints so state is known
+				.then(_ => this.bootstrap())
+				.then(_ => {
+							this.emit("debug-ready");
+							resolve(undefined);
+					});
 			};
+			this.targetDir = target;
+			this.symbolMapper = symbol_mapper;
 			this.process = ChildProcess.spawn(this.application, args, { cwd: cwd, env: this.procEnv });
 			this.targetFilter = targetFilter;
 			this.process.stdout.on("data", this.stdout.bind(this));
@@ -210,6 +224,36 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		});
 	}
 
+	lookupSymbol(address: number) : IFileSource {
+		if (!this.symbolMapper) return { file: "<unknown>", line: 0};
+		const elfPath = this.getELFPath(0);
+
+		const cmd = this.symbolMapper.replace("$1", elfPath).replace("$2", "0x"+address.toString(16));
+		const args = cmd.split(" ");
+		const addrLines = ChildProcess.spawnSync(args[0], args.slice(1), { cwd: this.targetDir, env: this.procEnv, stdio: ['ignore', 'pipe', 'ignore'] });
+		const lines = addrLines.stdout.toString().split("\n");
+
+		if (lines.length == 1)
+			return { file: lines[0].split(':')[0], line: parseInt(lines[0].split(':')[1])}
+		else return { file: lines[1].split(':')[0], line: parseInt(lines[1].split(':')[1]), func: lines[0]}
+	}
+
+	findSourceFile(basename: string, address: number = 0) : Promise<IFileSource> {
+		try { if (fs.lstatSync(basename).isFile()) return Promise.resolve({file:basename, line: 0}); } catch(e) {} // Ignore missing error here
+		let basePath = this.targetDir.replace("/Work", "/src");
+		this.log("stdout", "Searching files in " + basePath)
+		// Search directory recursively for the given filename
+		return new Promise((resolve, reject) => {
+			glob(basePath + '/**/' + basename, {dot: false}, (err, files) => {
+				if (files.length) {
+					this.log("stdout", "Found " + basename + " as " + files[0]);
+					return resolve({file:files[0], line:0});
+				} else // Else need to find the file via addr2line (which is a real slow function here)
+					resolve(this.lookupSymbol(address));
+			});
+		});
+	}
+
 	stdout(data) {
 		if (trace)
 			this.log("stderr", "stdout: " + data);
@@ -219,14 +263,19 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 			this.buffer += data.toString("utf8");
 
 		const end = this.buffer.lastIndexOf('\n');
-		if (end != -1) {
-			this.onOutput(this.buffer.substring(0, end));
-			this.buffer = this.buffer.substring(end + 1);
-		}
-		if (this.buffer.length) {
-			if (this.onOutputPartial(this.buffer)) {
-				this.buffer = "";
+		try {
+			if (end != -1) {
+				this.onOutput(this.buffer.substring(0, end));
+				this.buffer = this.buffer.substring(end + 1);
 			}
+			if (this.buffer.length) {
+				if (this.onOutputPartial(this.buffer)) {
+					this.buffer = "";
+				}
+			}
+		} catch(e) 
+		{
+			this.log("stderr", "Error: " + e.stack);
 		}
 	}
 
@@ -254,14 +303,17 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 	}
 
 	handleAnswer(answer: XSDBAnswer) {
+		// Ugly hack to force waiting for a second prompt after the first one
+		if (answer.mode == XSDBMode.AddingBreakpoint && answer.complete == false) 
+			return false;
 		if (this.debugOutput || true)
 			this.log("log", "XSDB -> App: " + JSON.stringify(answer));
 		if (answer.interrupt !== null) {
 			if (answer.interrupt.running) {
-				if (answer.interrupt.status == "Disabled") this.emit("exited-normally", answer.interrupt);
-				else this.emit("running", answer.interrupt);
+				if (answer.interrupt.status == "Disabled") this.emit("exited-normally", answer);
+				else this.emit("running", answer);
 			} else {
-				this.emit("breakpoint", answer.interrupt);
+				this.emit("breakpoint", answer);
 			}
 		}
 		if (answer.mode == XSDBMode.Error) {
@@ -269,6 +321,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		} else {
 			this.handlers[answer.mode](answer);
 		}
+		return true;
 	}
 
 	onOutputPartial(line) {
@@ -277,16 +330,8 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		this.log("stdout", "p>" + line + "<" + this.mode + "/" + parsed.mode + "/" + this.protoLines[0].mode);
 		if (parsed.mode == XSDBMode.Prompt) 
 		{
-			this.log("stdout", "Prompt received ");
-			try {
-			const ret = mergeLines(this.protoLines, this);
-			} catch(e) 
-			{
-				this.log("stderr", "Error merging lines: "+e + "\n" + e.stack);
-				console.trace(e);
-			}
-			this.handleAnswer(mergeLines(this.protoLines, this));
-			this.protoLines = [];
+			if (this.handleAnswer(mergeLines(this.protoLines, this)))
+				this.protoLines = [];
 			return true;
 		}
 		else {
@@ -318,16 +363,52 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 			this.protoLines.push(parsed);
 			if (parsed.mode == XSDBMode.Prompt) 
 			{
-				this.handleAnswer(mergeLines(this.protoLines, this));
-				this.protoLines = [];
+				if (this.handleAnswer(mergeLines(this.protoLines, this)))
+					this.protoLines = [];
 			}
 		});
 	}
 
+	getELFName(index : number) : string {
+		if (index == 0) index = this.currentTarget;
+		const item = this.availableTargets.get(index);
+		return item.pos.split(",")[0] + '_' + item.pos.split(",")[1];
+	}
+
+	getELFPath(index : number) : string {
+		const elfName = this.getELFName(index);
+		return this.targetDir + "/aie/" + elfName + "/Release/" + elfName;
+	}
+
+	async loadSymbols() {
+		for (const [num, item] of this.availableTargets) {
+			await this.setThread(item.target, "");
+			await this.sendCommand("memmap -file " + this.getELFPath(num) );
+		};
+		return true;
+	}
+
+	bootstrap() {
+		return this.getThreads().then(thr => {
+			if (thr.length) 
+			{
+				this.log("stdout", "Found " + thr.length + " targets (" + JSON.stringify(thr) + ")");
+				if (this.availableTargets.size && fs.lstatSync(this.targetDir).isDirectory()) {
+					return this.loadSymbols();
+				}
+
+				return this.setThread(thr[0].id, "Can't set the active target");
+			}
+			this.log("console", "Can only attach with XSDB, and no target found for this filter: " + JSON.stringify(thr));
+			return false;
+		});
+	}
+
+
 	start(runToStart: boolean): Thenable<boolean> {
-		return new Promise((resolve, reject) => {
-			this.log("console", "Running executable isn't supported with XSDB");
-			reject();
+		// Let's fetch the targets, if not done yet
+		return this.availableTargets.size == 0 ? this.bootstrap() : new Promise((res, rej) => { 
+			return res(true);
 		});
 	}
 
@@ -466,7 +547,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 					const bkptNum = bpt.id;
 					const newBrk = {
 						file: breakpoint.file ? breakpoint.file : "unknown source file",
-						raw: "0x"+bpt.address.toString(16),
+						raw: bpt.address ? "0x"+bpt.address.toString(16) : "0",
 						line: breakpoint.line,
 						condition: null
 					};
@@ -519,18 +600,20 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 
 		const answer = await this.sendCommand("targets" + (this.targetFilter ? " -filter " + this.targetFilter : ""));
 		const threads = answer.value as XSDBTargets;
-		const ret: Thread[] = [];
+		let ret: Thread[] = [];
 		this.availableTargets = new Map();
-		return threads.targets.map(element => {
+		ret = threads.targets.map(element => {
 			const ret: Thread = {
 				id: element.target,
 				targetId: element.pos
 			};
 
-			this.availableTargets.set(element, element.target);
-			ret.name = element.targetName || undefined;
+			this.availableTargets.set(element.target, element);
+			const name = element.targetName + (element.pos ? '[' + element.pos + ']' : '');
+			ret.name = name;
 			return ret;
 		});
+		return ret;
 	}
 
 	async setThread(thread: number, error: any) {
@@ -559,15 +642,23 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 
 		let stack = [];
 		for (let i = startFrame; i < highBand; i++) {
+			let filepath = {file: "<unknown>", line: frames.frame[i].line, func: frames.frame[i].func};
+			if (frames.frame[i].file) {
+				let fp = await this.findSourceFile(path.normalize(frames.frame[i].file), frames.frame[i].address);	
+				filepath.file = fp.file;
+				if (fp.line) filepath.line = fp.line;
+				if (fp.func) filepath.func = fp.func;
+			}
 			stack.push({
 				address: frames.frame[i].address,
-				fileName: frames.frame[i].file,
-				file: path.normalize(frames.frame[i].file),
-				function: frames.frame[i].func,
+				fileName: path.basename(filepath.file),
+				file: filepath.file,
+				function: filepath.func,
 				level: frames.frame[i].index,
-				line: frames.frame[i].line
+				line: filepath.line
 			});
 		}
+		this.log("stdout", "Stack: " + stack.map(v => JSON.stringify(v)).join('\n'));
 		return stack;
 	}
 
@@ -579,7 +670,8 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		if (threadRet) return threadRet;
 	
 		const answer = await this.sendCommand("locals");
-		if (!answer.complete) return [];
+		this.log("stdout", "Got result: " + JSON.stringify(answer));
+		if (!answer.complete || answer.value === null) return [];
 
 		const variables = answer.value as XSDBLocals;
 		const ret: Variable[] = [];
@@ -694,10 +786,11 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 			this.mode = XSDBMode.Waiting; break;
 		}
 		if (forceMode !== -1) this.mode = forceMode;
-		this.log("stdout", "Sending command type>"+cmd+"< =>"+command);
+		this.log("stdout", "Sending command ("+XSDBMode[this.mode]+") type>"+cmd+"< =>"+command);
 		return new Promise((resolve, reject) => {
 			this.handlers[this.mode] = (answer: XSDBAnswer) => {
 				this.log("stdout", "Handler for " + this.mode + ": " + JSON.stringify(answer));
+				this.mode = XSDBMode.Waiting;
 				if (answer && answer.mode == XSDBMode.Error) {
 					if (suppressFailure) {
 						this.log("stderr", `WARNING: Error executing command '${command}'`);
@@ -737,6 +830,8 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 	protected stream;
 	protected targetFilter: string;
 	protected protoLines: XSDBLine[];
-	protected availableTargets: Map<XSDBTargetItem, Number> = new Map();
+	protected availableTargets: Map<number, XSDBTargetItem> = new Map();
 	protected currentTarget: number;
+	protected targetDir: string;
+	protected symbolMapper: string;
 }
