@@ -32,6 +32,8 @@ class XSDBDebugSession extends XSDBPDebugSession {
 		response.body.supportsEvaluateForHovers = true;
 		response.body.supportsSetVariable = true;
 		response.body.supportsStepBack = false;
+		response.body.supportsReadMemoryRequest = true;
+		response.body.supportsDisassembleRequest = true;
 		this.sendResponse(response);
 	}
 

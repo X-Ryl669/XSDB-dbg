@@ -75,6 +75,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		return new Promise((resolve, reject) => {
 			const args = this.preargs.concat(this.extraargs || []);
 			this.mode = XSDBMode.Banner;
+			this.handlers[XSDBMode.ListingTarget] = this.noHandler;
 			this.handlers[XSDBMode.Banner] = (prompt: any) => { 
 				this.log("console", "Banner received"); this.mode = XSDBMode.Waiting;
 
@@ -389,6 +390,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 	}
 
 	bootstrap() {
+		this.log("stdout", "Bootstrap called");
 		return this.getThreads().then(thr => {
 			if (thr.length) 
 			{
@@ -595,10 +597,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		});
 	}
 
-	async getThreads(): Promise<Thread[]> {
-		if (trace) this.log("stderr", "getThreads");
-
-		const answer = await this.sendCommand("targets" + (this.targetFilter ? " -filter " + this.targetFilter : ""));
+	async getThreadsHandler(answer: XSDBAnswer) : Promise<Thread[]> {
 		const threads = answer.value as XSDBTargets;
 		let ret: Thread[] = [];
 		this.availableTargets = new Map();
@@ -614,6 +613,24 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 			return ret;
 		});
 		return ret;
+	}
+
+	async getThreads(): Promise<Thread[]> {
+		if (trace) this.log("stderr", "getThreads");
+		this.log("stdout", "Get threads called");
+		if (this.handlers[XSDBMode.ListingTarget] != this.noHandler) {
+			// Something already called this function asynchronously, so let's chain the answer instead of repeating it.
+			const prevHandler = this.handlers[XSDBMode.ListingTarget];
+			return new Promise((resolve, reject) => {
+				this.handlers[XSDBMode.ListingTarget] = (answer: XSDBAnswer) => {
+					prevHandler(answer);
+					return resolve(this.getThreadsHandler(answer));
+				};
+			});
+		} else {
+			const answer = await this.sendCommand("targets" + (this.targetFilter ? " -filter " + this.targetFilter : ""));
+			return this.getThreadsHandler(answer);
+		}
 	}
 
 	async setThread(thread: number, error: any) {
@@ -662,6 +679,20 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		return stack;
 	}
 
+	parseLocalValue(value: string) : any {
+		const isNumber = /^(:?NaN|-?((\d*\.\d+|\d+|\d+.)([Ee][+-]?\d+)?|Infinity) *)+$/gm;
+		if (isNumber.exec(value))
+		{
+			if (value.includes(" "))
+				return value.split(' ').map(v => parseFloat(v));
+			else return parseFloat(value);
+		} 
+		else if (value == "N/A" || value.includes("'") || value.includes('"'))
+			return value;
+		else if (value.startsWith("0x"))
+			return parseInt(value, 16);
+	}
+
 	async getStackVariables(thread: number, frame: number): Promise<Variable[]> {
 		if (trace)
 			this.log("stderr", "getStackVariables");
@@ -676,10 +707,11 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		const variables = answer.value as XSDBLocals;
 		const ret: Variable[] = [];
 		for (const element of variables.variables) {
+			let v = this.parseLocalValue(element.value);
 			ret.push({
 				name: element.name,
-				valueStr: element.value,
-				type: "string",
+				valueStr: JSON.stringify(v),
+				type: typeof(v) == "number" ? "number" : "string",
 				raw: element
 			});
 		}
@@ -700,8 +732,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 	async evalExpression(name: string, thread: number, frame: number): Promise<XSDBAnswer> {
 		if (trace)
 			this.log("stderr", "evalExpression");
-
-		return Promise.reject("Not supported");
+		return this.sendCommand("print " + name);
 	}
 
 	async varCreate(expression: string, name: string = "-", frame: string = "@"): Promise<VariableObject> {
@@ -759,6 +790,8 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		this.process.stdin.write(raw + "\n");
 	}
 
+	noHandler(answer: XSDBAnswer) {}
+
 	sendCommand(command: string, suppressFailure: boolean = false, forceMode: number = -1): Thenable<XSDBAnswer> {
 		const cmd = command.split(' ')[0];
 		switch(cmd)
@@ -772,6 +805,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		case "rrd"    : this.mode = XSDBMode.ListingRegister; break;
 		case "mrd"    : this.mode = XSDBMode.ListingMemory; break;
 		case "locals" : this.mode = command.length > cmd.length + 2 ? XSDBMode.Waiting : XSDBMode.ListingLocals; break; // Can be used to set variables too 
+		case "print"  : this.mode = XSDBMode.ListingLocals; break;
 		case "dis"    : this.mode = XSDBMode.ListingDisassembly; break;
 		
 		case "con"    : 
@@ -790,6 +824,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		return new Promise((resolve, reject) => {
 			this.handlers[this.mode] = (answer: XSDBAnswer) => {
 				this.log("stdout", "Handler for " + this.mode + ": " + JSON.stringify(answer));
+				this.handlers[this.mode] = this.noHandler;
 				this.mode = XSDBMode.Waiting;
 				if (answer && answer.mode == XSDBMode.Error) {
 					if (suppressFailure) {

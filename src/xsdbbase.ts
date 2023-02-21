@@ -2,7 +2,7 @@ import * as DebugAdapter from 'vscode-debugadapter';
 import { DebugSession, InitializedEvent, TerminatedEvent, StoppedEvent, ThreadEvent, OutputEvent, ContinuedEvent, Thread, StackFrame, Scope, Source, Handles } from 'vscode-debugadapter';
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { Breakpoint, IBackend, Variable, VariableObject, ValuesFormattingMode, MIError } from './backend/backend';
-import { XSDBAnswer, XSDBTargets, XSDBLine } from './backend/xsdbp_parse';
+import { XSDBAnswer, XSDBTargets, XSDBLine, XSDBMode, XSDBLocals } from './backend/xsdbp_parse';
 import { expandValue, isExpandable } from './backend/gdb_expansion';
 import { XMI_XSDB } from './backend/xsdbp/xsdbp';
 import * as systemPath from "path";
@@ -467,7 +467,7 @@ export class XSDBPDebugSession extends DebugSession {
 						}
 					} else {
 						if (variable.valueStr !== undefined) {
-							let expanded = expandValue(createVariable, `{${variable.name}=${variable.valueStr})`, "", variable.raw);
+							let expanded = expandValue(createVariable, `{${variable.name}=${variable.valueStr}`, "", variable.raw);
 							if (expanded) {
 								if (typeof expanded[0] == "string")
 									expanded = [
@@ -636,7 +636,16 @@ export class XSDBPDebugSession extends DebugSession {
 	protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
 		const [threadId, level] = this.frameIdToThreadAndLevel(args.frameId);
 		if (args.context == "watch" || args.context == "hover") {
-			this.sendErrorResponse(response, 7, "Unsupported feature");
+			this.xsdbDebugger.evalExpression(args.expression, threadId, level).then(output => {
+				const v = output.mode == XSDBMode.ListingLocals ? this.xsdbDebugger.parseLocalValue((output.value as XSDBLocals).variables[0].value) : "";
+				response.body = {
+					result: JSON.stringify(v),
+					variablesReference: 0
+				};
+				this.sendResponse(response);
+			}, msg => {
+				this.sendErrorResponse(response, 7, "Unsupported feature");
+			});
 		} else {
 			this.xsdbDebugger.sendUserInput(args.expression, threadId, level).then(output => {
 				if (typeof output == "undefined")
