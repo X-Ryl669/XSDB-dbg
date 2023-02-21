@@ -8,7 +8,7 @@
 		"debug"
 	],
 	"license": "public domain",
-	"version": "0.26.1",
+	"version": "0.10.0",
 	"publisher": "X-Ryl669",
 	"icon": "images/icon.png",
 	"engines": {
@@ -94,8 +94,8 @@
 								"description": "Filter to use when listing targets (for example: {name =~\"core*\"})",
 								"default": ""
 							},
-							"symbol_mapper" : {
-								"type" : "string",
+							"symbol_mapper": {
+								"type": "string",
 								"description": "Path to a symbol mapper from address to file/line. $1 is replaced with the ELF file in the command and $2 is replaced by the hexadecimal address to look for (typically, \"addr2line\")",
 								"default": "addr2line -e $1 -fC $2"
 							},
@@ -193,9 +193,8 @@
 		"prettier-check-docs": "prettier --check **/*.md"
 	},
 	"dependencies": {
-		"ssh2": "^1.6.0",
-		"vscode-debugadapter": "^1.45.0",
-		"vscode-debugprotocol": "^1.45.0"
+		"@vscode/debugadapter": "^1.59.0",
+		"ssh2": "^1.6.0"
 	},
 	"devDependencies": {
 		"@istanbuljs/nyc-config-typescript": "^1.0.2",

@@ -1,8 +1,8 @@
-import * as DebugAdapter from 'vscode-debugadapter';
-import { DebugSession, InitializedEvent, TerminatedEvent, StoppedEvent, ThreadEvent, OutputEvent, ContinuedEvent, Thread, StackFrame, Scope, Source, Handles } from 'vscode-debugadapter';
-import { DebugProtocol } from 'vscode-debugprotocol';
+import * as DebugAdapter from '@vscode/debugadapter';
+import { DebugSession, InitializedEvent, TerminatedEvent, StoppedEvent, ThreadEvent, OutputEvent, ContinuedEvent, MemoryEvent, Thread, StackFrame, Scope, Source, Handles } from '@vscode/debugadapter';
+import { DebugProtocol } from '@vscode/debugprotocol';
 import { Breakpoint, IBackend, Variable, VariableObject, ValuesFormattingMode, MIError } from './backend/backend';
-import { XSDBAnswer, XSDBTargets, XSDBLine, XSDBMode, XSDBLocals } from './backend/xsdbp_parse';
+import { XSDBAnswer, XSDBTargets, XSDBLine, XSDBMode, XSDBLocals, XSDBDisassembly } from './backend/xsdbp_parse';
 import { expandValue, isExpandable } from './backend/gdb_expansion';
 import { XMI_XSDB } from './backend/xsdbp/xsdbp';
 import * as systemPath from "path";
@@ -179,6 +179,72 @@ export class XSDBPDebugSession extends DebugSession {
 		this.sendResponse(response);
 	}
 
+	protected async readMemoryRequest(response: DebugProtocol.ReadMemoryResponse, args: DebugProtocol.ReadMemoryArguments): Promise<void> {
+		this.sendEvent(new OutputEvent("Received read memory request: " + JSON.stringify(args), "stderr"));
+
+		let start = 0;
+		if (args.memoryReference.startsWith("0x")) start = parseInt(args.memoryReference, 16);
+		else if (/^\d+$/.exec(args.memoryReference)) start = parseInt(args.memoryReference);
+		else {
+			// Need to get the address of the given variable
+			const answer = await this.xsdbDebugger.sendCommand("&" + args.memoryReference);
+			if (answer.complete) start = parseInt((answer.value as XSDBLocals).variables[0].value);
+		}
+
+		this.xsdbDebugger.examineMemory(start + args.offset, args.count).then(mems => {
+			const data = new Uint8Array(mems.reduce((i, a) => { a.push(i.value >> 24, (i.value >> 16) & 0xFF, (i.value >> 8) & 0xFF, i.value & 0xFF); }, []));
+
+			response.body = {
+				address: mems[0].address,
+				data: Buffer.from(data).toString('base64'), 
+			};
+			this.sendResponse(response);
+		}, err => {
+			this.sendErrorResponse(response, 12, `Failed to read memory: ${err.toString()}`);
+		});
+	
+	}
+
+	protected async disassembleRequest(response: DebugProtocol.DisassembleResponse, args: DebugProtocol.DisassembleArguments): Promise<void> {
+		this.sendEvent(new OutputEvent("Received disassemble request: " + JSON.stringify(args), "stderr"));
+
+		try {
+		let start = 0;
+		if (typeof(args.memoryReference) == "number") start = args.memoryReference;
+		else if (args.memoryReference.substring(0, 2) == "0x") start = parseInt(args.memoryReference, 16);
+		else if (/^\d+$/.exec(args.memoryReference)) start = parseInt(args.memoryReference);
+		else {
+			// Need to get the address of the given variable
+			const answer = await this.xsdbDebugger.sendCommand("&" + args.memoryReference);
+			if (answer.complete) start = parseInt((answer.value as XSDBLocals).variables[0].value);
+		}
+
+		this.sendEvent(new OutputEvent("start position: " + start, "stderr"));
+		this.xsdbDebugger.getDisassembly(start).then(answer => {
+			if (!answer.complete) return this.sendResponse(response);
+			const disas = (answer.value as XSDBDisassembly).mem;
+			const shrinkDump = /0x([A-Fa-f0-9]{2}) */g;
+			const instructions = disas.map(v => { 
+				return {
+					address : '0x' + v.address.toString(16),
+					instructionBytes: v.program.replace(shrinkDump, "$1 ").trim(),
+					instruction: v.value
+				}});
+			this.sendEvent(new OutputEvent("got answer: " + JSON.stringify(instructions), "stderr"));
+			
+			response.body = {
+				instructions: instructions
+			};
+			this.sendEvent(new OutputEvent("response: " + JSON.stringify(response), "stderr"));
+			this.sendResponse(response);
+		}, err => {
+			this.sendErrorResponse(response, 12, `Failed to disassemble memory: ${err.toString()}`);
+		});
+	} catch(e) { this.xsdbDebugger.log("stderr", e.stack)}
+	
+	}
+
+
 	protected async setVariableRequest(response: DebugProtocol.SetVariableResponse, args: DebugProtocol.SetVariableArguments): Promise<void> {
 		try {
 			if (this.useVarObjects) {
@@ -294,15 +360,17 @@ export class XSDBPDebugSession extends DebugSession {
 					source = new Source(element.fileName, path);
 				}
 
-				ret.push(new StackFrame(
+				let sf = new StackFrame(
 					this.threadAndLevelToFrameId(args.threadId, element.level),
 					element.function + "@" + element.address,
 					source,
 					element.line,
-					0));
+					0);
+				sf.instructionPointerReference = element.address;
+				ret.push(sf);
 			});
 			response.body = {
-				stackFrames: ret
+				stackFrames: ret				
 			};
 			this.sendResponse(response);
 		}, err => {

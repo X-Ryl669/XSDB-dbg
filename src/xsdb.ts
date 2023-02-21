@@ -1,6 +1,6 @@
 import { XSDBPDebugSession, RunCommand } from './xsdbbase';
-import { DebugSession, InitializedEvent, TerminatedEvent, StoppedEvent, OutputEvent, Thread, StackFrame, Scope, Source, Handles } from 'vscode-debugadapter';
-import { DebugProtocol } from 'vscode-debugprotocol';
+import { DebugSession, InitializedEvent, TerminatedEvent, StoppedEvent, OutputEvent, Thread, StackFrame, Scope, Source, Handles } from '@vscode/debugadapter';
+import { DebugProtocol } from '@vscode/debugprotocol';
 import { XMI_XSDB, escape } from "./backend/xsdbp/xsdbp";
 import { ValuesFormattingMode } from './backend/backend';
 
@@ -24,6 +24,7 @@ export interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArgum
 
 class XSDBDebugSession extends XSDBPDebugSession {
 	protected initializeRequest(response: DebugProtocol.InitializeResponse, args: DebugProtocol.InitializeRequestArguments): void {
+		this.sendEvent(new OutputEvent("Received init request: " + JSON.stringify(args), "stderr"));
 		response.body.supportsGotoTargetsRequest = true;
 		response.body.supportsHitConditionalBreakpoints = true;
 		response.body.supportsConfigurationDoneRequest = true;
@@ -33,6 +34,7 @@ class XSDBDebugSession extends XSDBPDebugSession {
 		response.body.supportsSetVariable = true;
 		response.body.supportsStepBack = false;
 		response.body.supportsReadMemoryRequest = true;
+		response.body.supportsWriteMemoryRequest = false;
 		response.body.supportsDisassembleRequest = true;
 		this.sendResponse(response);
 	}

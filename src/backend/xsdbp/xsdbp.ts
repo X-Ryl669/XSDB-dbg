@@ -656,7 +656,6 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		const highBand = Math.min(frames.frame.length, maxLevels);
 		if (startFrame > frames.frame.length) return [];
 
-
 		let stack = [];
 		for (let i = startFrame; i < highBand; i++) {
 			let filepath = {file: "<unknown>", line: frames.frame[i].line, func: frames.frame[i].func};
@@ -763,6 +762,12 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		if (trace)
 			this.log("stderr", "varAssign");
 		return this.sendCommand(`locals ${this.quote(name)} ${rawValue}`);
+	}
+	
+	async getDisassembly(address: number) : Promise<XSDBAnswer> {
+		if (trace)
+			this.log("stderr", "getDisassembly");
+		return this.sendCommand("dis");
 	}
 
 	logNoNewLine(type: string, msg: string) {
