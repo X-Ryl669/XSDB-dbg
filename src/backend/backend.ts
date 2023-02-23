@@ -31,6 +31,9 @@ export interface Variable {
 	valueStr: string;
 	type: string;
 	raw?: any;
+	address?: number;
+	size?: number;
+	flags?: string;
 }
 
 export interface IBackend {

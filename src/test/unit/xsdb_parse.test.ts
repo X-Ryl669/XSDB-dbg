@@ -87,7 +87,12 @@ const exampleComm : TestLine[]= [
    { mode:XSDBMode.ListingRegister, 	line:"   cm_event_status           cm_event_group       mm_event_broadcast     "},
    { mode:XSDBMode.ListingRegister, 	line:"          mm_trace          mm_event_status           mm_event_group     "},
    { mode:XSDBMode.ListingRegister, 	line:"               dma                     lock     "},
-
+{ mode:XSDBMode.ListingLocalsDef, 	line:"Name        Type                Address             Size      Flags"},
+{ mode:XSDBMode.ListingLocalsDef, 	line:"========    ========            ===========         ====      ====="}, 
+{ mode:XSDBMode.ListingLocalsDef, 	line:"stream_in: At col 118: Cannot get symbol location information. No object location info found in DWARF data"},
+{ mode:XSDBMode.ListingLocalsDef, 	line:"stream_out: At col 118: Cannot get symbol location information. No object location info found in DWARF data"},
+{ mode:XSDBMode.ListingLocalsDef, 	line:"inp         v16cint16           N/A                 64        RW"},
+ 
 
 ];
 
@@ -284,6 +289,18 @@ suite("XSDB Parse", () => {
 				assert.strictEqual(parsed.resultRecords[1].valueFromHex, 0x00000260);
 			} else if (i < 73) assert.strictEqual(parsed.resultRecords[0].value, "N/A");
 		}
+	});	
+	test("Locals definition", () => {
+		for (let i = 80; i < 83; i++) {
+			const parsed = parseExampleComm(i);
+			assert.ok(parsed);
+			assert.strictEqual(parsed.mode, XSDBMode.ListingLocalsDef);
+			assert.strictEqual(parsed.outOfBandRecord, null);
+			assert.strictEqual(parsed.outOfBandPos, null);
+			assert.strictEqual(parsed.resultRecords.length, 0);
+		}
+		let parsed = parseExampleComm(84);
+		assert.deepStrictEqual(parsed.resultRecords[0], { key: "inp", value: "v16cint16", pos: "N/A", target: 64, targetName: null, state: "RW" });
 	});	
 
 });

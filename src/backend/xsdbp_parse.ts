@@ -9,6 +9,7 @@ export enum XSDBMode
 	ListingMemory,
 	ListingBreakpoints,
 	ListingLocals,
+	ListingLocalsDef,
 	ListingDisassembly,
 	ListingBacktrace,
 	WaitingForValue,
@@ -86,6 +87,23 @@ export class XSDBLocals
 		this.variables.push({ name: line.resultRecords[0].key, value: line.resultRecords[0].value });
 	}
 }
+
+export class XSDBLocalsDef
+{
+	constructor(public variables: {name: string, type: string, address: null | number, size: number, flags: string}[] = []) {}
+
+	append(line: XSDBLineInfo) {
+		if (!line.resultRecords.length) return;
+		this.variables.push({ 
+			name: line.resultRecords[0].key, 
+			type: line.resultRecords[0].value, 
+			address: line.resultRecords[0].pos == "N/A" ? 0 : parseInt(line.resultRecords[0].pos),
+			size: line.resultRecords[0].target,
+			flags: line.resultRecords[0].state
+		  });
+	}
+}
+
 
 export class XSDBTargetItem
 {
@@ -185,11 +203,11 @@ export class XSDBError
 export class XSDBAnswer 
 {
 	mode: XSDBMode;
-	value: null | XSDBTargets | XSDBRegisters | XSDBMemory | XSDBBreakpoints | XSDBLocals | XSDBDisassembly | XSDBBackTraces | XSDBSimpleValue | XSDBAddedBreakpoint | XSDBError;
+	value: null | XSDBTargets | XSDBRegisters | XSDBMemory | XSDBBreakpoints | XSDBLocals | XSDBLocalsDef | XSDBDisassembly | XSDBBackTraces | XSDBSimpleValue | XSDBAddedBreakpoint | XSDBError;
 	interrupt: XSDBInterrupt | null;
 	complete: boolean;
 
-	constructor(mode : XSDBMode, value: null | XSDBTargets | XSDBRegisters | XSDBMemory | XSDBBreakpoints | XSDBLocals | XSDBDisassembly | XSDBBackTraces | XSDBSimpleValue | XSDBAddedBreakpoint | XSDBError)
+	constructor(mode : XSDBMode, value: null | XSDBTargets | XSDBRegisters | XSDBMemory | XSDBBreakpoints | XSDBLocals | XSDBLocalsDef | XSDBDisassembly | XSDBBackTraces | XSDBSimpleValue | XSDBAddedBreakpoint | XSDBError)
 	{
 		this.mode = mode;
 		this.value = value;
@@ -345,6 +363,7 @@ const breakpointNotFound = /^ *target (\d+): \{Unresolved source line informatio
 const disassemblyLine = /^([0-9A-Fa-f]+): ((?:0x[0-9a-fA-F]{2} *)+)(.*)$/;
 const memoryLine = /^ *([0-9A-Fa-f]+): *([0-9A-Fa-f]+)/;
 const registerMatch = / *([_a-z0-9]+): (N\/A|[0-9A-Fa-f]+)/;
+const localDefs = /^([_a-zA-Z][_a-zA-Z0-9]*) +([_a-zA-Z][_a-zA-Z0-9]*|\*) +(N\/A|0x[0-9A-Fa-f]+) +(\d+) +([RWO]*) *$/;
 
 
 export function parseXSDBP(output: string, parsingMode: XSDBMode): XSDBLine {
@@ -511,6 +530,18 @@ export function parseXSDBP(output: string, parsingMode: XSDBMode): XSDBLine {
 			};
 			return new XSDBLine(XSDBMode.ListingLocals, null, null, [local]);
 		} 
+	} else if (parsingMode == XSDBMode.ListingLocalsDef) {
+		if (match = localDefs.exec(output)) {
+			const local = {
+				key: match[1], // Address
+				value: match[2], // Type
+				target: parseInt(match[4]), // Size
+				targetName: null, //
+				pos: match[3], // Address
+				state: match[5], // Flags
+			};
+			return new XSDBLine(XSDBMode.ListingLocalsDef, null, null, [local]);
+		} else return new XSDBLine(XSDBMode.ListingLocalsDef, null, null, []);
 	} else if (parsingMode == XSDBMode.ListingRegister) {
 		resultRecords = [];
 		while (match = registerMatch.exec(output)) {
@@ -616,6 +647,15 @@ export function mergeLines(lines: XSDBLine[], ee: EventEmitter = null) : XSDBAns
 			answer.value.append(line);
 		}
 		break;
+	case XSDBMode.ListingLocalsDef: 
+		answer.value = new XSDBLocalsDef;
+		for (let line of lines) {
+			const type = isInterrupt(answer, line, mode);
+			if (type < 0) break;
+			if (type == 1) continue;
+			answer.value.append(line);
+		}
+		break;		
 	case XSDBMode.ListingDisassembly: 
 		answer.value = new XSDBDisassembly;
 		for (let line of lines) {

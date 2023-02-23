@@ -2,7 +2,7 @@ import * as DebugAdapter from '@vscode/debugadapter';
 import { DebugSession, InitializedEvent, TerminatedEvent, StoppedEvent, ThreadEvent, OutputEvent, ContinuedEvent, MemoryEvent, Thread, StackFrame, Scope, Source, Handles } from '@vscode/debugadapter';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { Breakpoint, IBackend, Variable, VariableObject, ValuesFormattingMode, MIError } from './backend/backend';
-import { XSDBAnswer, XSDBTargets, XSDBLine, XSDBMode, XSDBLocals, XSDBDisassembly } from './backend/xsdbp_parse';
+import { XSDBAnswer, XSDBTargets, XSDBLine, XSDBMode, XSDBLocals, XSDBDisassembly, XSDBMemory } from './backend/xsdbp_parse';
 import { expandValue, isExpandable } from './backend/gdb_expansion';
 import { XMI_XSDB } from './backend/xsdbp/xsdbp';
 import * as systemPath from "path";
@@ -191,11 +191,28 @@ export class XSDBPDebugSession extends DebugSession {
 			if (answer.complete) start = parseInt((answer.value as XSDBLocals).variables[0].value);
 		}
 
-		this.xsdbDebugger.examineMemory(start + args.offset, args.count).then(mems => {
-			const data = new Uint8Array(mems.reduce((i, a) => { a.push(i.value >> 24, (i.value >> 16) & 0xFF, (i.value >> 8) & 0xFF, i.value & 0xFF); }, []));
+		if (args.count == 0) {
+			response.body = { 
+				address: (start + args.offset).toString(),
+				data: "",
+			};
+			
+			return this.sendResponse(response);
+		}
+
+
+		this.xsdbDebugger.examineMemory(start + args.offset, args.count).then(mem => {
+			const data = new Uint8Array(mem.length * 4);
+			for (let i = 0; i < mem.length; i++) {
+				const m = mem[i];
+				data[i * 4 + 0] = m.value >> 24;
+				data[i * 4 + 1] = (m.value >> 16) & 0xFF;
+				data[i * 4 + 2] = (m.value >> 8) & 0xFF;
+				data[i * 4 + 3] = (m.value & 0xFF);
+			}
 
 			response.body = {
-				address: mems[0].address,
+				address: mem[0].address,
 				data: Buffer.from(data).toString('base64'), 
 			};
 			this.sendResponse(response);
@@ -222,20 +239,30 @@ export class XSDBPDebugSession extends DebugSession {
 		this.sendEvent(new OutputEvent("start position: " + start, "stderr"));
 		this.xsdbDebugger.getDisassembly(start).then(answer => {
 			if (!answer.complete) return this.sendResponse(response);
+			// We need to format the output, since VSCode doesn't do that and we can't just use the terminal output from XSDB here
+			// it's way too large. 
 			const disas = (answer.value as XSDBDisassembly).mem;
 			const shrinkDump = /0x([A-Fa-f0-9]{2}) */g;
+			const maxLength = disas.reduce((l, v) => { return Math.max(v.program.replace(shrinkDump, "$1 ").trim().length, l)}, 0);
+			const maxCols = disas.reduce((l, v) => { return Math.max(v.value.split(';').length, l)}, 0);
+			const colsSize = new Array(maxCols).fill(0);
+			for (let lines of disas) {
+				const cols = lines.value.split(';').map(v => v.trim().length);
+				for(let i = 0; i < cols.length; i++) { 
+					if (colsSize[i] < cols[i]) colsSize[i] = cols[i]; 
+				}
+			}
+
 			const instructions = disas.map(v => { 
 				return {
 					address : '0x' + v.address.toString(16),
-					instructionBytes: v.program.replace(shrinkDump, "$1 ").trim(),
-					instruction: v.value
+					instructionBytes: v.program.replace(shrinkDump, "$1 ").trim().padEnd(maxLength),
+					instruction: v.value.split(';').map((v, i) => v.trim().padEnd(colsSize[i])).join(' | ')
 				}});
-			this.sendEvent(new OutputEvent("got answer: " + JSON.stringify(instructions), "stderr"));
 			
 			response.body = {
 				instructions: instructions
 			};
-			this.sendEvent(new OutputEvent("response: " + JSON.stringify(response), "stderr"));
 			this.sendResponse(response);
 		}, err => {
 			this.sendErrorResponse(response, 12, `Failed to disassemble memory: ${err.toString()}`);
@@ -499,6 +526,7 @@ export class XSDBPDebugSession extends DebugSession {
 			let stack: Variable[];
 			try {
 				stack = await this.xsdbDebugger.getStackVariables(id.threadId, id.level);
+				this.sendEvent(new OutputEvent("Variable list: " + JSON.stringify(stack), "stderr"));
 				for (const variable of stack) {
 					if (this.useVarObjects) {
 						try {
@@ -542,17 +570,30 @@ export class XSDBPDebugSession extends DebugSession {
 										{
 											name: "<value>",
 											value: prettyStringArray(expanded),
-											variablesReference: 0
+											variablesReference: 0,
 										}
 									];
+								if (variable.address != null) {
+									expanded[0].memoryReference = variable.address != 0 ? '0x' + variable.address.toString(16) : null;
+									expanded[0].type = variable.type;
+								}
 								variables.push(expanded[0]);
+							} else if (variable.name[0] == '@') // Registers
+							{
+								variables.push({
+									name: variable.name,
+									value: variable.valueStr,
+									variablesReference: 0,
+									memoryReference: '0x' + variable.address.toString(16),
+									type: variable.type,
+								});
 							}
 						} else
 							variables.push({
 								name: variable.name,
 								type: variable.type,
 								value: "<unknown>",
-								variablesReference: createVariable(variable.name)
+								variablesReference: createVariable(variable.name),
 							});
 					}
 				}

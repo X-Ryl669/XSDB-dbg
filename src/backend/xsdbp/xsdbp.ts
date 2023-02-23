@@ -2,9 +2,9 @@ import { Breakpoint, IBackend, Thread, Stack, Variable, VariableObject, MIError 
 import * as ChildProcess from "child_process";
 import { EventEmitter } from "events";
 import { parseXSDBP, XSDBLine, XSDBMode, XSDBAnswer, mergeLines, 
-	     XSDBTargets, XSDBTargetItem, 
-		 XSDBRegisters, XSDBMemory, XSDBBreakpoints, XSDBLocals, XSDBDisassembly, XSDBBackTraces, XSDBSimpleValue, 
-		 XSDBAddedBreakpoint, XSDBError } from '../xsdbp_parse';
+	     XSDBTargets, XSDBTargetItem, XSDBRegisters, XSDBMemory, 
+		 XSDBBreakpoints, XSDBLocals, XSDBLocalsDef, XSDBDisassembly, 
+		 XSDBBackTraces, XSDBSimpleValue, XSDBAddedBreakpoint, XSDBError } from '../xsdbp_parse';
 import * as linuxTerm from '../linux/console';
 import * as net from "net";
 import * as fs from "fs";
@@ -258,13 +258,13 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 	stdout(data) {
 		if (trace)
 			this.log("stderr", "stdout: " + data);
-		if (typeof data == "string")
-			this.buffer += data;
-		else
-			this.buffer += data.toString("utf8");
-
-		const end = this.buffer.lastIndexOf('\n');
 		try {
+			if (typeof data == "string")
+				this.buffer += data;
+			else
+				this.buffer += data.toString("utf8");
+
+			const end = this.buffer.lastIndexOf('\n');
 			if (end != -1) {
 				this.onOutput(this.buffer.substring(0, end));
 				this.buffer = this.buffer.substring(end + 1);
@@ -320,6 +320,18 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		if (answer.mode == XSDBMode.Error) {
 			this.log("stderr", (answer.value as XSDBError).message);
 		} else {
+			if (answer.mode == XSDBMode.Waiting && this.mode != XSDBMode.Waiting) {
+				// Probably got an empty answer (this happens for few mode, so let's trigger their respective handlers)
+				switch (this.mode)
+				{
+				case XSDBMode.ListingLocals:
+				case XSDBMode.ListingLocalsDef:
+				case XSDBMode.ListingBreakpoints:
+					this.handlers[this.mode](answer);
+					return true;
+				default: break;
+				}
+			}
 			this.handlers[answer.mode](answer);
 		}
 		return true;
@@ -339,18 +351,6 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 			this.protoLines.pop();
 			return false;
 		}
-/*		
-		if (this.protoLines.length) {
-			this.log("stdout", "Strange, there are remaining lines after receiving:\n"+JSON.stringify(this.protoLines));
-		}
-
-
-		if (couldBeOutput(line)) {
-			this.logNoNewLine("stdout", "partial: "+ line);
-			return true;
-		}
-		return false;
-		*/
 	}
 
 	onOutput(lines) {
@@ -699,20 +699,54 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		const threadRet = await this.setThread(thread, []);
 		if (threadRet) return threadRet;
 	
-		const answer = await this.sendCommand("locals");
-		this.log("stdout", "Got result: " + JSON.stringify(answer));
-		if (!answer.complete || answer.value === null) return [];
-
-		const variables = answer.value as XSDBLocals;
 		const ret: Variable[] = [];
-		for (const element of variables.variables) {
-			let v = this.parseLocalValue(element.value);
-			ret.push({
-				name: element.name,
-				valueStr: JSON.stringify(v),
-				type: typeof(v) == "number" ? "number" : "string",
-				raw: element
-			});
+		try 
+		{
+			const answer = await this.sendCommand("locals");
+			this.log("stdout", "Got result: " + JSON.stringify(answer));
+			if (answer.complete && answer.value !== null) {
+				const defsAnswer = await this.sendCommand("locals -defs");
+				const defs = defsAnswer.complete && defsAnswer.value !== null ? (defsAnswer.value as XSDBLocalsDef).variables : [];
+				const variables = answer.value as XSDBLocals;
+				for (const element of variables.variables) {
+					let v = this.parseLocalValue(element.value);
+					const def = defs.filter(v => v.name == element.name);
+					if (def.length) {
+						ret.push({
+							name: element.name,
+							valueStr: JSON.stringify(v),
+							type: def[0].type,
+							raw: element,
+							address: def[0].address,
+							size: def[0].size,
+							flags: def[0].flags
+						});	
+					} else {
+						ret.push({
+							name: element.name,
+							valueStr: JSON.stringify(v),
+							type: typeof(v) == "number" ? "number" : "string",
+							raw: element
+						});
+					}
+				}
+			}
+		} catch(e) {}
+		// Then also include the registers, since VSCode doesn't have any simple way to capture/display them
+		const regAnswer = await this.sendCommand("rrd");
+		if (regAnswer.complete && regAnswer.value !== null) {
+			const regs = (regAnswer.value as XSDBRegisters).regs;
+			for (const reg of regs) {
+				ret.push({
+					name: "@"+reg.key,
+					valueStr: JSON.stringify(reg.valueFromHex),
+					type: "number",
+					raw: reg.key,
+					address: reg.valueFromHex,
+					size: 4,
+					flags: "RO"
+				});
+			}
 		}
 		return ret;
 	}
@@ -722,7 +756,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 			this.log("stderr", "examineMemory");
 		return new Promise((resolve, reject) => {
 			this.sendCommand("mrd 0x" + from.toString(16) + " " + length/4).then((answer) => {
-				if (!answer.complete) resolve([])
+				if (!answer.complete) resolve([]);
 				resolve((answer.value as XSDBMemory).mem);
 			}, reject);
 		});
@@ -809,7 +843,7 @@ export class XMI_XSDB extends EventEmitter implements IBackend {
 		case "bt"     : this.mode = XSDBMode.ListingBacktrace; break;
 		case "rrd"    : this.mode = XSDBMode.ListingRegister; break;
 		case "mrd"    : this.mode = XSDBMode.ListingMemory; break;
-		case "locals" : this.mode = command.length > cmd.length + 2 ? XSDBMode.Waiting : XSDBMode.ListingLocals; break; // Can be used to set variables too 
+		case "locals" : this.mode = command == "locals -defs" ? XSDBMode.ListingLocalsDef : (command.length > cmd.length + 2 ? XSDBMode.Waiting : XSDBMode.ListingLocals); break; // Can be used to set variables too 
 		case "print"  : this.mode = XSDBMode.ListingLocals; break;
 		case "dis"    : this.mode = XSDBMode.ListingDisassembly; break;
 		
