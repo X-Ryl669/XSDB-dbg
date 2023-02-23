@@ -1,5 +1,5 @@
 {
-	"name": "debug",
+	"name": "xsdb-debug",
 	"displayName": "XSDB Debug",
 	"description": "XSDB Debugger support for VSCode",
 	"keywords": [
@@ -16,9 +16,6 @@
 	},
 	"main": "./out/src/frontend/extension",
 	"activationEvents": [
-		"onCommand:code-debug.examineMemoryLocation",
-		"onCommand:code-debug.getFileNameNoExt",
-		"onCommand:code-debug.getFileBasenameNoExt"
 	],
 	"categories": [
 		"Debuggers"
@@ -33,12 +30,6 @@
 		}
 	},
 	"contributes": {
-		"commands": [
-			{
-				"command": "code-debug.examineMemoryLocation",
-				"title": "Code-Debug: Examine memory location"
-			}
-		],
 		"breakpoints": [
 			{
 				"language": "c"
