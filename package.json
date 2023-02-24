@@ -7,8 +7,8 @@
 		"remote",
 		"debug"
 	],
-	"license": "public domain",
-	"version": "0.10.0",
+	"license": "GPL3",
+	"version": "0.11.0",
 	"publisher": "X-Ryl669",
 	"icon": "images/icon.png",
 	"engines": {

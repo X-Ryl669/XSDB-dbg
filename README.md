@@ -46,3 +46,33 @@ This debugger works only by attaching to an HW server. It does so by launching a
 asking it to connect to any HW server. You can not start or stop a software with this debugger (the `dow` command is not supported).
 This means that your system must be autonomous and start by its own. The debugger can pause and resume the software on the target.
 
+#### Example configuration for AI Engine 
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug",
+            "type": "xsdb",
+            "request": "launch",
+            "target": "ip/aie/Work",
+            "cwd": "${workspaceRoot}",
+            "valuesFormatting": "parseText",
+            "showDevDebugOutput": true,
+            "printCalls": true,
+            "xsdb_target_filter": "{name =~\"core*\"}",
+            "autorun": [
+                "source /path/to/Xilinx/Vitis/2022.2/scripts/vitis/util/aie_debug_init.tcl",
+                "targets -set -nocase -filter {name =~\"Versal*\"}", 
+                "init_aie_debug -work-dir {${workspaceRoot}/aie/Work} -use-current-target -name AIEngine -jtag"
+            ],
+            // It's not correct for the AI engine CPU architecture, but it seems it's more or less working to perform the mapping
+            "symbol_mapper": "/path/to/Xilinx/Vitis/2022.2/gnu/aarch64/lin/aarch64-none/bin/aarch64-none-elf-addr2line -e $1 -fC $2",
+            "env": {
+                "XILINX_VITIS": "/path/to/Xilinx/Vitis/2022.2"
+            }
+        }
+    ]
+}
+```
