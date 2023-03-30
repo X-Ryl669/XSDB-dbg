@@ -27,7 +27,7 @@
 		"deprecation/deprecation": "error",
 		"no-null/no-null": "error",
 		"eol-last": "error",
-		"indent": ["error", "tab", {"SwitchCase": 1}],
+		"indent": ["error", 4, {"SwitchCase": 0}],
 		"no-console": "error",
 		"no-trailing-spaces": "error",
 		"prefer-const": ["error", {"ignoreReadBeforeAssign": true}],
